@@ -1,0 +1,6 @@
+[tile]
+world_gen_weight = 0.25
+
+[visual_data]
+character_left = '↑'
+text_color_left = [173, 83, 14]

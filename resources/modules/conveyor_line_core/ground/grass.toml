@@ -1,0 +1,6 @@
+[ground]
+world_gen_weight = 1.0
+
+[visual_data]
+back_color_left = [23, 59, 4]
+back_color_right = [23, 59, 4]

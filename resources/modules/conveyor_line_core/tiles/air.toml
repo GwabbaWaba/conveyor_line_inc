@@ -1,0 +1,6 @@
+[tile]
+world_gen_weight = 1.0
+solid = false
+
+[visual_data]
+_force_deser = true

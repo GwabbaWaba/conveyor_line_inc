@@ -1,0 +1,8 @@
+[tile]
+world_gen_weight = 0.125
+
+[visual_data]
+character_left = 'o'
+character_right = '.'
+text_color_left = [150, 150, 175]
+text_color_right = [150, 150, 175]

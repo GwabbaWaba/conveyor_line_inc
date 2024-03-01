@@ -1,0 +1,7 @@
+[tile]
+world_gen_weight = 0.125
+solid = false
+
+[visual_data]
+character_left = '/'
+text_color_left = [94, 59, 19]

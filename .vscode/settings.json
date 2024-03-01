@@ -1,0 +1,12 @@
+{
+    "Lua.diagnostics.disable": [
+        "redefined-local"
+    ],
+    "Lua.diagnostics.globals": [
+        "WriteToDebug",
+        "GameData",
+        "PostDeserializationEvents",
+        "Events",
+        "Core",
+    ]
+}
