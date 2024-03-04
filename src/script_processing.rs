@@ -1,7 +1,8 @@
 use std::{fs::{self, DirEntry}, sync::{Arc, Mutex}};
 
 use crossterm::cursor;
-use rlua::{Context, Lua, Value};
+use json::{object::Object, JsonValue};
+use rlua::{Context, Lua, Table, ToLua, Value};
 use terminal_size::terminal_size;
 
 use crate::{dir_entry_is_dir, game_data_dump, identifier_dump, last_tick, player, std_out, tile_map, time_between_ticks, write_to_debug, write_to_debug_pretty, Tile, CURSOR_POS, LAST_TICK, LUA, MAP_HEIGHT, MAP_LENGTH, MODULES_PATH, STATE_CHANGED, TIME_BETWEEN_TICKS};
@@ -47,6 +48,46 @@ pub fn load_lua_script(data: Result<&DirEntry, &std::io::Error>, lua_context: Co
     }
 }
 
+pub fn get_config_info() -> JsonValue {
+    let config_data = fs::read_to_string(r#"resources\config\config.json"#).expect("config should exist");
+    let config_data = json::parse(&config_data).expect("config should exist");
+    config_data
+}
+
+fn json_object_to_lua_table<'a>(lua_context: Context<'a>, object: &Object) -> Table<'a>{
+    let table = lua_context.create_table().unwrap();
+
+    for (key, val) in object.iter() {
+        table.set(key, json_to_lua(lua_context, val)).unwrap();
+    }
+
+    table
+}
+
+fn json_array_to_lua_table<'a>(lua_context: Context<'a>, arr: &Vec<JsonValue>) -> Table<'a> {
+    let table = lua_context.create_table().unwrap();
+
+    let mut last_index = 1;
+    for val in arr {
+        table.set(last_index, json_to_lua(lua_context, val)).unwrap();
+        last_index += 1;
+    }
+
+    table
+}
+
+fn json_to_lua<'a>(lua_context: Context<'a>, json_val: &JsonValue) -> rlua::Value<'a> {
+    match json_val {
+        JsonValue::Null => Value::Nil,
+        JsonValue::Short(s) => s.as_str().to_lua(lua_context).unwrap(),
+        JsonValue::String(s) => s.as_str().to_lua(lua_context).unwrap(),
+        JsonValue::Number(n) => Value::Number((*n).into()),
+        JsonValue::Boolean(b) => Value::Boolean(*b),
+        JsonValue::Object(o) => Value::Table(json_object_to_lua_table(lua_context, &o)),
+        JsonValue::Array(a) => Value::Table(json_array_to_lua_table(lua_context, &a)),
+    }
+}
+
 pub fn load_default_lua_data(lua_context: Context) {
     let globals = lua_context.globals();
     let core = lua_context.create_table().unwrap();
@@ -85,6 +126,11 @@ pub fn load_default_lua_data(lua_context: Context) {
             Ok(())
         }).unwrap();
         core.set("reload", reload).unwrap();
+
+        let get_config_lua = lua_context.create_function(|lua_context, ()| {
+            Ok(json_to_lua(lua_context, &get_config_info()))
+        }).unwrap();
+        core.set("getConfig", get_config_lua).unwrap();
     }
     // terminal management
     {

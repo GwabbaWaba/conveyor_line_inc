@@ -1,0 +1,17 @@
+{
+    "conveyor_line_engine_config": {
+
+    },
+    "conveyor_line_core_config": {
+        "quick_events": {
+            "w": {
+                "arguments": [
+                    ["south"]
+                ],
+                "commands": [
+                    "move"
+                ]
+            }
+        }
+    }
+}

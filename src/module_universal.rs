@@ -1,6 +1,6 @@
 use std::{ffi::OsString, fs::DirEntry};
 
-pub const MODULES_PATH: &str = r"resources/modules";
+pub const MODULES_PATH: &str = r#"resources/modules"#;
 
 pub fn dir_entry_is_dir(dir_entry: Result<&DirEntry, &std::io::Error>) -> bool {
     dir_entry.is_ok() && {

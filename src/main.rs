@@ -1,8 +1,9 @@
-use std::{collections::HashMap, env, io::Stdout, process, sync::{Arc, Mutex}, time::{Duration, SystemTime}};
+use std::{collections::HashMap, env, error::Error, fmt::Display, fs, io::Stdout, process, sync::{Arc, Mutex}, time::{Duration, SystemTime}};
 
 use crossterm::{cursor, event::{poll, read, Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers}, execute, queue, terminal::{Clear, ClearType}, QueueableCommand};
+use json::{object::Object, JsonValue};
 use once_cell::sync::Lazy;
-use rlua::{Function, Lua, Table, ToLuaMulti, Value};
+use rlua::{Context, Function, Lua, Table, ToLua, ToLuaMulti, Value};
 
 use std::io::stdout;
 
