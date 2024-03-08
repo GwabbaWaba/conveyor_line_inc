@@ -1,11 +1,10 @@
-use std::{fs::{self, DirEntry}, sync::{Arc, Mutex}};
+use std::{collections::HashSet, fs::{self, DirEntry}, sync::{Arc, Mutex}};
 
-use crossterm::cursor;
+use crossterm::{cursor, event::{KeyCode, KeyEvent, KeyEventState, KeyModifiers}};
 use json::{object::Object, JsonValue};
-use rlua::{Context, Lua, Table, ToLua, Value};
-use terminal_size::terminal_size;
+use rlua::{Context, Function, Lua, Table, ToLua, ToLuaMulti, Value};
 
-use crate::{dir_entry_is_dir, game_data_dump, identifier_dump, last_tick, player, std_out, tile_map, time_between_ticks, write_to_debug, write_to_debug_pretty, Tile, CURSOR_POS, LAST_TICK, LUA, MAP_HEIGHT, MAP_LENGTH, MODULES_PATH, STATE_CHANGED, TIME_BETWEEN_TICKS};
+use crate::{dir_entry_is_dir, game_data_dump, identifier_dump, last_tick, lua, player, std_out, tile_map, time_between_ticks, write_to_debug, write_to_debug_pretty, Tile, CURSOR_POS, LAST_TICK, LUA, MAP_HEIGHT, MAP_LENGTH, MODULES_PATH, STATE_CHANGED, TIME_BETWEEN_TICKS};
 
 pub fn run_lua_scripts_from_path(path: &str, lua: Arc<Mutex<Lua>>) {
     let dir = fs::read_dir(path).unwrap();
@@ -48,8 +47,8 @@ pub fn load_lua_script(data: Result<&DirEntry, &std::io::Error>, lua_context: Co
     }
 }
 
-pub fn get_config_info() -> JsonValue {
-    let config_data = fs::read_to_string(r#"resources\config\config.json"#).expect("config should exist");
+pub fn get_json_info(path: String) -> JsonValue {
+    let config_data = fs::read_to_string(path).expect("config should exist");
     let config_data = json::parse(&config_data).expect("config should exist");
     config_data
 }
@@ -85,6 +84,75 @@ fn json_to_lua<'a>(lua_context: Context<'a>, json_val: &JsonValue) -> rlua::Valu
         JsonValue::Boolean(b) => Value::Boolean(*b),
         JsonValue::Object(o) => Value::Table(json_object_to_lua_table(lua_context, &o)),
         JsonValue::Array(a) => Value::Table(json_array_to_lua_table(lua_context, &a)),
+    }
+}
+
+fn lua_table_to_json(lua_table: &Table) -> JsonValue {
+    let mut keys = Vec::new();
+    let mut vals = Vec::new();
+
+    let mut is_arr = true;
+    let table_len = lua_table.len().unwrap_or(0) as usize;
+    let mut key_checks = HashSet::with_capacity(table_len);
+
+    for pair in lua_table.clone().pairs::<Value, Value>() {
+        if let Ok((key, val)) = pair {
+            if is_arr {
+                if let Value::Integer(i) = key {
+                    key_checks.insert(i as usize);
+                } else {
+                    is_arr = false;
+                }
+            }
+
+            keys.push(key);
+            vals.push(val);
+        }
+    }
+
+    if is_arr {
+        for i in 1..=table_len {
+            if !key_checks.contains(&i) {
+                is_arr = false;
+                break;
+            }
+        }
+    }
+
+    if is_arr {
+        let mut json_arr: Vec<JsonValue> = (0..table_len).map(|_| JsonValue::Null).collect();
+
+        for (index, val) in keys.into_iter().zip(vals) {
+            if let Value::Integer(index) = index {
+                json_arr[index as usize - 1] = lua_to_json(&val);
+            }
+        }
+        return JsonValue::Array(json_arr);
+    }
+
+    let mut json_obj = json::object::Object::new();
+    for (key, val) in keys.into_iter().zip(vals) {
+        if let Value::String(key) = key {
+            json_obj.insert(key.to_str().unwrap(), lua_to_json(&val));
+        }
+    }
+    return JsonValue::Object(json_obj);
+}
+
+
+fn lua_to_json(lua_val: &rlua::Value<'_>) -> JsonValue {
+    match lua_val {
+        Value::Nil => JsonValue::Null,
+        Value::Boolean(b) => JsonValue::Boolean(*b),
+        Value::LightUserData(_) => todo!(),
+        Value::Integer(i) => JsonValue::Number((*i).into()),
+        Value::Number(n) => JsonValue::Number((*n).into()),
+        Value::String(s) => JsonValue::String(s.to_str().unwrap().to_owned()),
+        Value::Table(t) => lua_table_to_json(t),
+        Value::Function(_) => todo!(),
+        Value::Thread(_) => todo!(),
+        Value::UserData(_) => todo!(),
+        Value::Error(e) => panic!("{}", e.to_string()),
     }
 }
 
@@ -127,21 +195,27 @@ pub fn load_default_lua_data(lua_context: Context) {
         }).unwrap();
         core.set("reload", reload).unwrap();
 
-        let get_config_lua = lua_context.create_function(|lua_context, ()| {
-            Ok(json_to_lua(lua_context, &get_config_info()))
+        let get_json_lua = lua_context.create_function(|lua_context, path: String| {
+            Ok(json_to_lua(lua_context, &get_json_info(path)))
         }).unwrap();
-        core.set("getConfig", get_config_lua).unwrap();
+        core.set("getJSON", get_json_lua).unwrap();
+
+        let set_json_lua = lua_context.create_function(|lua_context, (path, table): (String, Table)| {
+            let to_write = lua_table_to_json(&table);
+            let to_write = json::stringify(to_write);
+            let res = fs::write(path, to_write);
+            if let Err(e) = res {
+                write_to_debug(e);
+            }
+            Ok(())
+        }).unwrap();
+        core.set("setJSON", set_json_lua).unwrap();
     }
     // terminal management
     {
         let terminal_table = lua_context.create_table().unwrap();
         let get_terminal_size = lua_context.create_function(|lua_context, ()| {
-            let terminal_size = terminal_size();
-
-            let (terminal_width, terminal_height) = match terminal_size {
-                Some(size) => (size.0.0, size.1.0),
-                None => (50, 50),
-            };
+            let (terminal_width, terminal_height) = crossterm::terminal::size().unwrap();
 
             let luafied_terminal_size = lua_context.create_table().unwrap();
             luafied_terminal_size.set("width", terminal_width).unwrap();
@@ -310,4 +384,95 @@ pub fn load_default_lua_data(lua_context: Context) {
     }
 
     globals.set("Core", core).unwrap();
+}
+
+// hellish conversion to String
+pub fn keycode_to_string(keycode: KeyCode) -> String{
+    match keycode {
+        KeyCode::Char(c) => {
+            String::from(c)
+        },
+        KeyCode::F(n) => {
+            format!("F{}", n)
+        },
+        KeyCode::Media(m) => {
+            format!("{:?}", m).to_lowercase()
+        },
+        KeyCode::Modifier(m) => {
+            format!("{:?}", m).to_lowercase()
+        },
+        _ => {
+            format!("{:?}", keycode).to_lowercase()
+        }
+    }
+}
+
+pub fn call_key_events(event: &KeyEvent) {
+    lua().lock().unwrap().context(|lua_context| {
+        let globals = lua_context.globals();
+
+        if let Ok(core) = globals.get::<_, Table>("Core") {
+            if let Ok(events) = core.get::<_, Table>("Events") {
+                if let Ok(key_events) = events.get::<_, Table>("KeyEvents") {
+                    let luafied_event = lua_context.create_table().unwrap();
+                    let (code, modifiers, kind, state) = (event.code, event.modifiers, event.kind, event.state);
+
+                    let luafied_code = keycode_to_string(code);
+                
+                    let luafied_modifiers = lua_context.create_table().unwrap();
+                    let possible_modifiers = [
+                        KeyModifiers::CONTROL, KeyModifiers::ALT, KeyModifiers::SHIFT, 
+                        KeyModifiers::HYPER, KeyModifiers::SUPER, KeyModifiers::META,
+                        KeyModifiers::NONE
+                    ];
+                    for possible in possible_modifiers { 
+                        let debugged_modifier = format!("{:?}", possible).to_lowercase();
+                        luafied_modifiers.set(&debugged_modifier[13..(debugged_modifier.len()-1)], modifiers.contains(possible)).unwrap();
+                    }
+
+                    let luafied_kind = format!("{:?}", kind).to_lowercase();
+                
+                    let luafied_state = lua_context.create_table().unwrap();
+                    let possible_states = [
+                        KeyEventState::CAPS_LOCK, KeyEventState::KEYPAD, KeyEventState::NUM_LOCK,
+                        KeyEventState::NONE
+                    ];
+                    for possible in possible_states { 
+                        let debugged_state = format!("{:?}", possible).to_lowercase();
+                        luafied_state.set(&debugged_state[14..(debugged_state.len()-1)], state.contains(possible)).unwrap();
+                    }
+                
+                    luafied_event.set("code", luafied_code).unwrap();
+                    luafied_event.set("modifiers", luafied_modifiers).unwrap();
+                    luafied_event.set("kind", luafied_kind).unwrap();
+                    luafied_event.set("state", luafied_state).unwrap();
+    
+                    for pair in key_events.pairs::<Value, Function>() {
+                        let pair = pair.unwrap();
+                        if let Err(e) = pair.1.call::<Table, ()>(luafied_event.clone()) {
+                            write_to_debug_pretty(format!("{:?}:\n{:?}", pair.0, e));
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+pub fn call_lua_events<T: for<'a> ToLuaMulti<'a> + Clone>(event_key: &str, args: T) {
+
+    lua().lock().unwrap().context(|lua_context| {
+        let globals = lua_context.globals();
+
+        if let Ok(core) = globals.get::<_, Table>("Core") {
+            if let Ok(events) = core.get::<_, Table>("Events") {
+                if let Ok(events_table) = events.get::<_, Table>(event_key) {
+    
+                    for pair in events_table.pairs::<Value, Function>() {
+                        pair.unwrap().1.call::<T, ()>(args.clone()).unwrap();
+                    }
+                }
+            }
+        }
+    });
 }

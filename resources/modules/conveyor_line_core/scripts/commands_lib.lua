@@ -1,5 +1,5 @@
 -- quick event keybinds
-local quickEvents = Core.getConfig()["conveyor_line_core_config"]["quick_events"]
+local quickEvents = require("resources.modules.conveyor_line_core.scripts.init").config["quick_events"]
 
 --[[
     all functions until typicalSplitInput are designed for that function

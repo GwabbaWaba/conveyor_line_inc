@@ -1,15 +1,36 @@
 local debug = require("resources.modules.conveyor_line_core.scripts.debug")
 local commsLib = require("resources.modules.conveyor_line_core.scripts.commands_lib")
 
--- typed command directions aliases
-local directionAliases = {["w"] = "north", ["a"] = "west", ["s"] = "south", ["d"] = "east"}
+local aliases = require("resources.modules.conveyor_line_core.scripts.init").config["direction_aliases"]
 local quickEvents = commsLib.quickEvents
 
 -- previous command inputs, tracked for previous
 local prevCommands = {}
+local prevCommandsNextIndex = 1
 
 
 -- commands
+
+--[[
+    alias str val
+  ]]
+local function alias(input)
+    local alia = input.arguments[1]
+    if not alia then return "arguments[1] missing" end
+
+    local val = input.arguments[2]
+    if not val then return "arguments[2] missing" end
+
+    if val == "none" then
+        aliases[alia] = nil
+    else
+        aliases[alia] = val
+    end
+
+    local newConfig = Core.getJSON("resources\\config\\config.json")
+    newConfig["conveyor_line_core_config"]["direction_aliases"] = aliases
+    Core.setJSON("resources\\config\\config.json", newConfig)
+end
 
 --[[
     help (str)?
@@ -35,8 +56,8 @@ end
     end
 
     local direction = inputDirection
-    if directionAliases[inputDirection] then
-        direction = directionAliases[inputDirection]
+    if aliases[inputDirection] then
+        direction = aliases[inputDirection]
     end
 
     local tile = tileIdents.get(inputTileName)
@@ -81,8 +102,8 @@ local function breakCommand(input)
     if not inputDirection then return "arguments[1] missing" end
 
     local direction = inputDirection
-    if directionAliases[inputDirection] then
-        direction = directionAliases[inputDirection]
+    if aliases[inputDirection] then
+        direction = aliases[inputDirection]
     end
 
     if not commsLib.isDirection(direction) then return "isn't direction" end
@@ -119,8 +140,8 @@ local function move(input)
     if not inputDirection then return "arguments[1] missing" end
 
     local direction = inputDirection
-    if directionAliases[inputDirection] then
-        direction = directionAliases[inputDirection]
+    if aliases[inputDirection] then
+        direction = aliases[inputDirection]
     end
 
     if not commsLib.isDirection(direction) then return "isn't direction" end
@@ -237,9 +258,16 @@ local commandFunctions = {
     ["help"] = help,
     -- fundamentals
     ["set"] = set, ["move"] = move,  ["break"] = breakCommand, ["place"] = place,
+    ["alias"] = alias,
     -- debug
     ["print"] = printCommand, ["reload"] = reload, ["time-travel"] = timeTravel
 }
+
+local function getWithWrapAround(num, min, max)
+    if num > max then return min + num - max end
+    if num < min then return max + num - min end
+    return num
+end
 
 -- used in the event listeners to call commands and print their early return fail messages
 local function runCommand(command, input)
@@ -247,15 +275,43 @@ local function runCommand(command, input)
     if output then
         Core.print(output)
     end
-    prevCommands[#prevCommands+1] = {command = command, input = input}
+
+    prevCommands[prevCommandsNextIndex] = {command = command, input = input}
+    prevCommandsNextIndex = prevCommandsNextIndex + 1
+
+    prevCommandsNextIndex = getWithWrapAround(prevCommandsNextIndex+1, 1, 10)
 end
 
 --[[
-    (p | prev | previous) ((num a|b {val; ?}) ({val; ?a} a|b X)?)?
+    (p | prev | previous) ((num a|b {val; ?a}) ({val; ?a} a|b X)?)?
     ?a: amount of args the previous command takes
 ]]
 local function previous(input)
-  local input1 = input[1]
+  local input1 = input.arguments[1]
+  local input2 = input.arguments[2]
+  
+  local toRun
+  if not input1 then
+    toRun = prevCommands[getWithWrapAround(prevCommandsNextIndex-1, 1, 10)]
+  else
+    local input1AsNum = tonumber(input1)
+    local argsSource
+    if type(input1) == "table" then
+        argsSource = input1
+    else
+        argsSource = input2
+    end
+
+    if input1AsNum then
+        if input1AsNum > 10 then return "out of range" end
+        toRun = prevCommands[11 - input1AsNum]
+    end
+
+    if argsSource then toRun.arguments = input1 end
+  end
+
+  debug.deepPrintTable(toRun)
+  runCommand(toRun.command, toRun)
 end
 commandFunctions["p"] = previous
 commandFunctions["prev"] = previous

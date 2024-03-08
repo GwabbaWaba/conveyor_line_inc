@@ -1,9 +1,11 @@
+use core::num;
 use std::{collections::HashMap, env, error::Error, fmt::Display, fs, io::Stdout, process, sync::{Arc, Mutex}, time::{Duration, SystemTime}};
 
-use crossterm::{cursor, event::{poll, read, Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers}, execute, queue, terminal::{Clear, ClearType}, QueueableCommand};
+use crossterm::{cursor, event::{poll, read, Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers}, execute, queue, terminal::{enable_raw_mode, Clear, ClearType}, QueueableCommand};
 use json::{object::Object, JsonValue};
 use once_cell::sync::Lazy;
 use rlua::{Context, Function, Lua, Table, ToLua, ToLuaMulti, Value};
+use tui::{backend::CrosstermBackend, Terminal};
 
 use std::io::stdout;
 
@@ -79,9 +81,6 @@ use player::*;
 mod map;
 use map::*;
 
-mod ui_render;
-use ui_render::*;
-
 mod map_render;
 use map_render::*;
 
@@ -110,14 +109,23 @@ fn last_tick() -> SystemTime {
     unsafe { LAST_TICK.unwrap() }
 }
 
+static mut TERMINAL: Option<Arc<Mutex<Terminal<CrosstermBackend<Stdout>>>>> = None;
+fn terminal() -> Arc<Mutex<Terminal<CrosstermBackend<Stdout>>>> {
+    unsafe { TERMINAL.clone().expect("Shouldn't be None") }
+}
+
 fn main() {
     clear_debug();
 
     println!("program started");
+    enable_raw_mode().unwrap();
 
     // lua init
     unsafe {
         LUA = Some(Arc::new(Mutex::new(Lua::new())))
+    }
+    unsafe {
+        TERMINAL = Some(Arc::new(Mutex::new(Terminal::new(CrosstermBackend::new(stdout())).expect("Shouldn't"))))
     }
 
     lua().lock().unwrap().context(|lua_context| {
@@ -180,7 +188,7 @@ fn main() {
     ignorant_execute!(std_out, cursor::Hide);
     ignorant_queue!(std_out, cursor::MoveTo(0, 0));
     ignorant_queue!(std_out, Clear(ClearType::FromCursorDown)); 
-
+    
     /* delete when you make world gen good ~*/
     tile_map()[player().position.0][player().position.1] = Tile::new_unchecked({
         identifier_dump().tile_types.get_by_left("conveyor_line_core:air").cloned().unwrap_or(0)
@@ -190,18 +198,7 @@ fn main() {
      * also make them work good universally (text wrap and nav controls)
      * lol
     ~*/
-    let mut map_box = TextBoxBuilder::new(RIGHT_TOP_LEFT, RIGHT_BOX_WIDTH, TOP_BOX_HEIGHT)
-        .finalize();
     
-    let mut input_box = TextBoxBuilder::new(LEFT_BOTTOM_TOP_LEFT, LEFT_BOX_WIDTH, BOTTOM_BOX_HEIGHT)
-        .finalize();
-    
-    let mut output_box = TextBoxBuilder::new(LEFT_TOP_LEFT, LEFT_BOX_WIDTH, TOP_BOX_HEIGHT)
-        .flair_top(format!("╔═|h|b|{:═<w$}|?|*|═╗", "", w = LEFT_BOX_WIDTH as usize - 14))
-        .finalize();
-
-    let mut hotbar_box = TextBoxBuilder::new(RIGHT_BOTTOM_TOP_LEFT, RIGHT_BOX_WIDTH, BOTTOM_BOX_HEIGHT)
-        .finalize();
     
     /* TODO - have this set through config, for fun ~*/
     let cursor_mimic = "\u{001B}[48;2;255;255;255m \u{001B}[0m";
@@ -271,6 +268,9 @@ fn main() {
             match read() {
                 Ok(Event::Key(event)) if event.kind == KeyEventKind::Press => {
                     match (event.code, type_mode) {
+                        (KeyCode::Char('c'), _) if event.modifiers == KeyModifiers::CONTROL => {
+                            std::process::exit(0);
+                        },
                         (KeyCode::F(1) | KeyCode::Tab, false) => {
                             type_mode = true;
                         },
@@ -297,93 +297,6 @@ fn main() {
         }
     }
     
-}
-
-fn call_key_events(event: &KeyEvent) {
-    lua().lock().unwrap().context(|lua_context| {
-        let globals = lua_context.globals();
-
-        if let Ok(core) = globals.get::<_, Table>("Core") {
-            if let Ok(events) = core.get::<_, Table>("Events") {
-                if let Ok(key_events) = events.get::<_, Table>("KeyEvents") {
-                    let luafied_event = lua_context.create_table().unwrap();
-                    let (code, modifiers, kind, state) = (event.code, event.modifiers, event.kind, event.state);
-
-                    // hellish conversion to String
-                    let luafied_code = match code {
-                        KeyCode::Char(c) => {
-                            String::from(c)
-                        },
-                        KeyCode::F(n) => {
-                            format!("F{}", n)
-                        },
-                        KeyCode::Media(m) => {
-                            format!("{:?}", m).to_lowercase()
-                        },
-                        KeyCode::Modifier(m) => {
-                            format!("{:?}", m).to_lowercase()
-                        },
-                        _ => {
-                            format!("{:?}", code).to_lowercase()
-                        }
-                    };
-                
-                    let luafied_modifiers = lua_context.create_table().unwrap();
-                    let possible_modifiers = [
-                        KeyModifiers::CONTROL, KeyModifiers::ALT, KeyModifiers::SHIFT, 
-                        KeyModifiers::HYPER, KeyModifiers::SUPER, KeyModifiers::META,
-                        KeyModifiers::NONE
-                    ];
-                    for possible in possible_modifiers { 
-                        let debugged_modifier = format!("{:?}", possible).to_lowercase();
-                        luafied_modifiers.set(&debugged_modifier[13..(debugged_modifier.len()-1)], modifiers.contains(possible)).unwrap();
-                    }
-
-                    let luafied_kind = format!("{:?}", kind).to_lowercase();
-                
-                    let luafied_state = lua_context.create_table().unwrap();
-                    let possible_states = [
-                        KeyEventState::CAPS_LOCK, KeyEventState::KEYPAD, KeyEventState::NUM_LOCK,
-                        KeyEventState::NONE
-                    ];
-                    for possible in possible_states { 
-                        let debugged_state = format!("{:?}", possible).to_lowercase();
-                        luafied_state.set(&debugged_state[14..(debugged_state.len()-1)], state.contains(possible)).unwrap();
-                    }
-                
-                    luafied_event.set("code", luafied_code).unwrap();
-                    luafied_event.set("modifiers", luafied_modifiers).unwrap();
-                    luafied_event.set("kind", luafied_kind).unwrap();
-                    luafied_event.set("state", luafied_state).unwrap();
-    
-                    for pair in key_events.pairs::<Value, Function>() {
-                        let pair = pair.unwrap();
-                        if let Err(e) = pair.1.call::<Table, ()>(luafied_event.clone()) {
-                            write_to_debug_pretty(format!("{:?}:\n{:?}", pair.0, e));
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
-
-pub fn call_lua_events<T: for<'a> ToLuaMulti<'a> + Clone>(event_key: &str, args: T) {
-
-    lua().lock().unwrap().context(|lua_context| {
-        let globals = lua_context.globals();
-
-        if let Ok(core) = globals.get::<_, Table>("Core") {
-            if let Ok(events) = core.get::<_, Table>("Events") {
-                if let Ok(events_table) = events.get::<_, Table>(event_key) {
-    
-                    for pair in events_table.pairs::<Value, Function>() {
-                        pair.unwrap().1.call::<T, ()>(args.clone()).unwrap();
-                    }
-                }
-            }
-        }
-    });
 }
 
 fn display_play_info(chars_behind_cursor: &Vec<char>) {

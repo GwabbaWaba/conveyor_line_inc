@@ -1,17 +1,1 @@
-{
-    "conveyor_line_engine_config": {
-
-    },
-    "conveyor_line_core_config": {
-        "quick_events": {
-            "w": {
-                "arguments": [
-                    ["south"]
-                ],
-                "commands": [
-                    "move"
-                ]
-            }
-        }
-    }
-}
+{"conveyor_line_engine_config":[],"conveyor_line_core_config":{"quick_events":{"a":{"arguments":[["west"]],"commands":["move"]},"d":{"arguments":[["east"]],"commands":["move"]},"w":{"arguments":[["north"]],"commands":["move"]},"s":{"arguments":[["south"]],"commands":["move"]}},"direction_aliases":{"a":"west","h":"west","k":"north","j":"south","d":"east","l":"east","w":"north","s":"south"}}}
