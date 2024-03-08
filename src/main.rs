@@ -16,11 +16,6 @@ mod macros;
 #[macro_use]
 mod module_loading_macros;
 
-static mut STDOUT:once_cell::sync::Lazy<Stdout> =  Lazy::<Stdout>::new(|| stdout());
-fn std_out() -> &'static mut Stdout {
-    unsafe { &mut STDOUT }
-}
-
 static mut CURSOR_POS: (u16, u16) = (0, 0);
 
 const CURSOR_UPDATE_TIMER: Duration = Duration::from_millis(500);
