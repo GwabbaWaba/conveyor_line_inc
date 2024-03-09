@@ -1,7 +1,7 @@
 
 use crossterm::cursor;
 
-use crate::{display::{color_format_char, ColorDisplay, HasBackColor, HasTextColor, HasTextDisplay, ANSI_DEFAULT_TEXT_COLOR}, ground_map, player::player, std_out, tile_map};
+use crate::{display::{color_format_char, ColorDisplay, HasBackColor, HasTextColor, HasTextDisplay, ANSI_DEFAULT_TEXT_COLOR}, ground_map, player::player, tile_map};
 
 
 pub const MAP_LENGTH: usize = 26;
@@ -28,9 +28,6 @@ pub fn display_map() {
             // print the left and right sides of the tile
             print!("{}{}", left, right);
         }
-        // new line every row
-        ignorant_queue!(std_out, cursor::MoveDown(1));
-        ignorant_execute!(std_out, cursor::MoveLeft(MAP_LENGTH as u16 * 2));
     }
 }
 

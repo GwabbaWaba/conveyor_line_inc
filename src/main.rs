@@ -8,7 +8,6 @@ use rlua::{Context, Function, Lua, Table, ToLua, ToLuaMulti, Value};
 use tui::{backend::CrosstermBackend, Terminal};
 
 use std::io::stdout;
-// ok so what if
 
 #[macro_use]
 mod macros;
@@ -78,9 +77,6 @@ use map::*;
 
 mod map_render;
 use map_render::*;
-
-mod input;
-use input::*;
 
 mod commands;
 use commands::*;
@@ -179,11 +175,6 @@ fn main() {
         }
     }
     
-    // ui setup
-    ignorant_execute!(std_out, cursor::Hide);
-    ignorant_queue!(std_out, cursor::MoveTo(0, 0));
-    ignorant_queue!(std_out, Clear(ClearType::FromCursorDown)); 
-    
     /* delete when you make world gen good ~*/
     tile_map()[player().position.0][player().position.1] = Tile::new_unchecked({
         identifier_dump().tile_types.get_by_left("conveyor_line_core:air").cloned().unwrap_or(0)
@@ -197,12 +188,6 @@ fn main() {
     
     /* TODO - have this set through config, for fun ~*/
     let cursor_mimic = "\u{001B}[48;2;255;255;255m \u{001B}[0m";
-    
-    let mut cursor_state = true;
-    let mut last_cursor_update = SystemTime::now();
-    
-    let mut chars_behind_cursor: Vec<char> = Vec::new();
-    let mut chars_ahead_cursor: Vec<char> = Vec::new();
     
     let mut type_mode = false;
 
@@ -223,40 +208,6 @@ fn main() {
             }
         }
 
-        if unsafe {STATE_CHANGED} { 
-            display_play_info(&chars_behind_cursor);
-            unsafe {STATE_CHANGED = false;}
-        }
-
-        ignorant_queue!(std_out, cursor::RestorePosition);
-
-        // render the fake cursor
-        match cursor_state {
-            true if type_mode => {
-                print!("{}", cursor_mimic);
-
-                ignorant_execute!(std_out, cursor::MoveLeft(cursor_mimic.len() as u16));
-            },
-            false => {
-                if chars_ahead_cursor.is_empty() {
-                    print!(" ");
-                } else {
-                    if behind_print_amount() >= MAX_INPUT_CHARS {
-                        print!("{}", RIGHT_ARROW_WHITE);
-                    } else {
-                        print!("{}", chars_ahead_cursor[chars_ahead_cursor.len() - 1]);
-                    }
-                }
-                ignorant_execute!(std_out, cursor::MoveLeft(1));
-            },
-            _ => {}
-        }
-        
-        if last_cursor_update.elapsed().unwrap() >= CURSOR_UPDATE_TIMER {
-            cursor_state = !cursor_state;
-            last_cursor_update = SystemTime::now();
-        }
-
         // check input
         if poll(Duration::from_secs(0)).unwrap() {
             // handle input
@@ -273,14 +224,7 @@ fn main() {
                             type_mode = false;
                         },
                         (_, true) => {
-                            // key_output returns the input command when enter is pressed
-                            let output = key_output(event, &mut chars_behind_cursor, &mut chars_ahead_cursor);
-                            match output {
-                                Some(current_input) => {
-                                    action_from_input( &current_input);
-                                },
-                                None => {},
-                            }
+                            /* TODO - actionFromInput must run here ~*/
                         },
                         (_, false) => {
                             call_key_events(&event)
@@ -292,60 +236,4 @@ fn main() {
         }
     }
     
-}
-
-fn display_play_info(chars_behind_cursor: &Vec<char>) {
-    ignorant_queue!(std_out, cursor::MoveTo(MAP_TOP_LEFT.0, MAP_TOP_LEFT.1));
-    display_map();
-    ignorant_queue!(std_out, cursor::MoveTo(PLAYER_COORD_DISPLAY.0, PLAYER_COORD_DISPLAY.1));
-    println!("({}, {})", &player().position.0 , &player().position.1);
-    
-    ignorant_queue!(std_out, cursor::MoveTo(27, MAP_HEIGHT as u16 + 6 + behind_print_amount().min(chars_behind_cursor.len()) as u16));
-    ignorant_queue!(std_out, cursor::SavePosition);
-}
-
-/// visually clears the input feed
-fn wipe_input() {
-    ignorant_execute!(std_out, cursor::MoveTo(START_OF_INPUT_LINE.0 - 1, START_OF_INPUT_LINE.1));
-    print!("{}", TEXT_INPUT_WIPER);
-}
-
-/// displays the input feed as scrolling text
-fn print_input_text(chars_behind_cursor: &Vec<char>, chars_ahead_cursor: &Vec<char>) {
-    wipe_input();
-
-    ignorant_execute!(std_out, cursor::MoveTo(START_OF_INPUT_LINE.0, START_OF_INPUT_LINE.1));
-
-    
-    let behind_start_index = if chars_behind_cursor.len() > behind_print_amount() {
-        chars_behind_cursor.len() - behind_print_amount()
-    } else { 0 };
-    for i in behind_start_index..chars_behind_cursor.len() {
-        print!("{}", chars_behind_cursor[i]);
-    }
-    
-    let show_left_arrow = behind_start_index > 0;
-    
-    ignorant_execute!(std_out, cursor::SavePosition);
-
-    let gap_ahead = MAX_INPUT_CHARS - behind_print_amount();
-    let mut show_right_arrow = gap_ahead < chars_ahead_cursor.len();
-    for (i, c) in chars_ahead_cursor.iter().rev().enumerate() {
-        if i < gap_ahead {
-            print!("{}", c);
-        } else {
-            show_right_arrow = show_right_arrow || i < chars_ahead_cursor.len() - 1;
-            break;
-        }
-    }
-
-    // show arrows which indicate that text is being wrapped
-    if show_left_arrow {
-        ignorant_execute!(std_out, cursor::MoveTo(START_OF_INPUT_LINE.0 - 1, START_OF_INPUT_LINE.1));
-        print!("{}", LEFT_ARROW_WHITE);
-    }
-    if show_right_arrow {
-        ignorant_execute!(std_out, cursor::MoveTo(START_OF_INPUT_LINE.0 + MAX_INPUT_CHARS as u16, START_OF_INPUT_LINE.1));
-        print!("{}", RIGHT_ARROW_WHITE);
-    }
 }

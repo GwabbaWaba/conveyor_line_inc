@@ -4,7 +4,7 @@ use crossterm::{cursor, event::{KeyCode, KeyEvent, KeyEventState, KeyModifiers}}
 use json::{object::Object, JsonValue};
 use rlua::{Context, Function, Lua, Table, ToLua, ToLuaMulti, Value};
 
-use crate::{dir_entry_is_dir, game_data_dump, identifier_dump, last_tick, lua, player, std_out, tile_map, time_between_ticks, write_to_debug, write_to_debug_pretty, Tile, CURSOR_POS, LAST_TICK, LUA, MAP_HEIGHT, MAP_LENGTH, MODULES_PATH, STATE_CHANGED, TIME_BETWEEN_TICKS};
+use crate::{dir_entry_is_dir, game_data_dump, identifier_dump, last_tick, lua, player, tile_map, time_between_ticks, write_to_debug, write_to_debug_pretty, Tile, CURSOR_POS, LAST_TICK, LUA, MAP_HEIGHT, MAP_LENGTH, MODULES_PATH, STATE_CHANGED};
 
 pub fn run_lua_scripts_from_path(path: &str, lua: Arc<Mutex<Lua>>) {
     let dir = fs::read_dir(path).unwrap();
@@ -231,8 +231,7 @@ pub fn load_default_lua_data(lua_context: Context) {
         terminal_table.set("cursorPos", cursor_pos_table).unwrap();
 
         let move_cursor = lua_context.create_function(|_, (x, y): (u16, u16)| {
-            ignorant_execute!(std_out, cursor::MoveToColumn(x));
-            ignorant_execute!(std_out, cursor::MoveToRow(y));
+            
             Ok(())
         }).unwrap();
         terminal_table.set("moveCursor", move_cursor).unwrap();
