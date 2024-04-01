@@ -7,7 +7,8 @@ local quickEvents = commsLib.quickEvents
 -- previous command inputs, tracked for previous
 local prevCommands = {}
 local prevCommandsNextIndex = 1
-
+local quickCommandsInLoop = 0
+local ticksSinceLastQuickCommand = 0
 
 -- commands
 
@@ -84,7 +85,7 @@ end
 
     if canPlace and distance > 0 or not tileTypes.get(tile).solid then
         map.setFromId(target.x, target.y, tile)
-        Core.bufferMapRedraw()
+        Core.GameInfo.Map.queueMapRedraw()
     end
 end
 
@@ -125,7 +126,7 @@ local function breakCommand(input)
         end
 
         map.setFromId(target.x, target.y, airId)
-        Core.bufferMapRedraw()
+        Core.GameInfo.Map.queueMapRedraw()
     end
 end
 
@@ -165,8 +166,16 @@ local function move(input)
 
     if canMove then
         player.setPosition(target.x, target.y)
-        Core.bufferMapRedraw()
+        Core.GameInfo.Map.queueMapRedraw()
     end
+end
+
+--[[
+    walk dir num
+  ]]
+local function walk(input)
+    if quickCommandsInLoop > 1 then return end
+    move(input)
 end
 
 --[[
@@ -257,7 +266,7 @@ local commandFunctions = {
     -- help
     ["help"] = help,
     -- fundamentals
-    ["set"] = set, ["move"] = move,  ["break"] = breakCommand, ["place"] = place,
+    ["set"] = set, ["move"] = move, ["walk"] = walk, ["break"] = breakCommand, ["place"] = place,
     ["alias"] = alias,
     -- debug
     ["print"] = printCommand, ["reload"] = reload, ["time-travel"] = timeTravel
@@ -329,13 +338,14 @@ end
 
 -- key command event listener
 local function quickCommand(keyEvent)
+    quickCommandsInLoop = quickCommandsInLoop + 1
     local keyCode = commsLib.keyCodeWithModifiers(keyEvent)
-
+    
     local quickEvent = quickEvents[keyCode]
     if quickEvent then
         for i, quickComm in ipairs(quickEvent.commands) do
             local command = commandFunctions[quickComm]
-
+            
             if command then 
                 local inputFromQuickEvent = {
                     command = quickComm,
@@ -345,6 +355,8 @@ local function quickCommand(keyEvent)
             end
         end
     end
+    
+    ticksSinceLastQuickCommand = 0
 end
 
 local key_event_functions = {quickCommand}
@@ -358,3 +370,10 @@ local commandEventFunctions = {commandEvent}
 for i = 1, #commandEventFunctions do
     Core.Events.CommandEvents[#Core.Events.CommandEvents+1] = commandEventFunctions[i]
 end
+
+local function updateTickCounter()
+    ticksSinceLastQuickCommand = ticksSinceLastQuickCommand + 1
+    quickCommandsInLoop = 0
+end
+
+Core.Events.TickEvents[#Core.Events.TickEvents+1] = updateTickCounter

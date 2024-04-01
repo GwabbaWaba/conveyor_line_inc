@@ -8,5 +8,6 @@
         "PostDeserializationEvents",
         "Events",
         "Core",
+        "core"
     ]
 }

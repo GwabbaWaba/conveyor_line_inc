@@ -1,5 +1,5 @@
 [tile]
-world_gen_weight = 1.0
+world_gen_weight = 5.0
 solid = false
 
 [visual_data]

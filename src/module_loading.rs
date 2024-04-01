@@ -470,7 +470,7 @@ pub fn deserialize_modules_from_path(game_data: &mut DeserializationDump, path: 
 /// run post deserialization lua events
 fn post_deserialization_events(game_data: &mut DeserializationDump) {
 
-    lua().lock().unwrap().context(|lua_context| {
+    lua().context(|lua_context| {
         let globals = lua_context.globals();
 
         if let Ok(core) = globals.get::<_, Table>("Core") {

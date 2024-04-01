@@ -143,7 +143,7 @@ local function findObstructableTarget(direction, distance)
         return {validity = "invalidDirection"}
     end
 
-    if target.x > gameInfo.Map.width or target.y > gameInfo.Map.height then return {validity = "outOfBounds"} end
+    if target.x > gameInfo.Map.width() or target.y > gameInfo.Map.height() then return {validity = "outOfBounds"} end
 
     local i = 1;
     for coord = iter.s, iter.e, iter.m do
@@ -192,7 +192,7 @@ end
     formats a key code with its modifiers, ignoring shift on single characters
     example:
     (non-relevent fields ommitted)
-    keyEvent={modifiers = {control = true, shift = true}, code = "L"} ->  "c+L"
+    keyEvent={modifiers = {control = true, shift = true}, code = "L"} ->  "c+s+L"
   ]]
 local function keyCodeWithModifiers(keyEvent)
     local control = ""
@@ -200,7 +200,7 @@ local function keyCodeWithModifiers(keyEvent)
     local shift = ""
     if keyEvent.modifiers.control then control = "c+" end
     if keyEvent.modifiers.alt then alt = "a+" end
-    if keyEvent.modifiers.shift and keyEvent.code:len() > 1 then control = "s+" end
+    if keyEvent.modifiers.shift then control = "s+" end
 
     return control..alt..shift..keyEvent.code
 end

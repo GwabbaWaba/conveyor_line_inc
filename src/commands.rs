@@ -4,7 +4,7 @@ use rlua::{Context, Function, Table, Value};
 use crate::{lua, write_to_debug_pretty};
 
 pub fn action_from_input(input: &str) {
-    lua().lock().unwrap().context(|lua_context| {
+    lua().context(|lua_context| {
         action_from_input_with_context(lua_context, input);
     });
 }

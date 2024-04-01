@@ -1,1 +1,12 @@
-{"conveyor_line_engine_config":[],"conveyor_line_core_config":{"quick_events":{"a":{"arguments":[["west"]],"commands":["move"]},"d":{"arguments":[["east"]],"commands":["move"]},"w":{"arguments":[["north"]],"commands":["move"]},"s":{"arguments":[["south"]],"commands":["move"]}},"direction_aliases":{"a":"west","h":"west","k":"north","j":"south","d":"east","l":"east","w":"north","s":"south"}}}
+{"conveyor_line_engine_config":{
+    "map": {
+        "width": 1000,
+        "height": 1000,
+        "display_width": 26,
+        "display_height": 26
+    }
+}
+,"conveyor_line_core_config":{"quick_events":{
+    "s+A":{"arguments":[["west"]],"commands":["move"]},"s+D":{"arguments":[["east"]],"commands":["move"]},"s+W":{"arguments":[["north"]],"commands":["move"]},"s+S":{"arguments":[["south"]],"commands":["move"]},"a":{"arguments":[["west"]],"commands":["walk"]},"d":{"arguments":[["east"]],"commands":["walk"]},"w":{"arguments":[["north"]],"commands":["walk"]},"s":{"arguments":[["south"]],"commands":["walk"]},
+    "s+H":{"arguments":[["west"]],"commands":["move"]},"s+L":{"arguments":[["east"]],"commands":["move"]},"s+K":{"arguments":[["north"]],"commands":["move"]},"s+J":{"arguments":[["south"]],"commands":["move"]},"h":{"arguments":[["west"]],"commands":["walk"]},"l":{"arguments":[["east"]],"commands":["walk"]},"k":{"arguments":[["north"]],"commands":["walk"]},"j":{"arguments":[["south"]],"commands":["walk"]}
+    },"direction_aliases":{"a":"west","h":"west","k":"north","j":"south","d":"east","l":"east","w":"north","s":"south"}}}

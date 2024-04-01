@@ -1,16 +1,42 @@
 
-use crossterm::cursor;
+use std::io::{self, Write};
 
-use crate::{display::{color_format_char, ColorDisplay, HasBackColor, HasTextColor, HasTextDisplay, ANSI_DEFAULT_TEXT_COLOR}, ground_map, player::player, tile_map};
+use crossterm::{cursor, execute};
+
+use crate::{display::{color_format_char, ColorDisplay, HasBackColor, HasTextColor, HasTextDisplay, ANSI_DEFAULT_TEXT_COLOR}, ground_map, map_height, map_width, player::player, terminal, tile_map, MAP_HEIGHT, MAP_WIDTH, STDOUT_REF};
 
 
-pub const MAP_LENGTH: usize = 26;
-pub const MAP_HEIGHT: usize = 26;
+pub static mut MAP_DISPLAY_WIDTH: Option<usize> = None;
+pub static mut MAP_DISPLAY_HEIGHT: Option<usize> = None;
+pub fn map_display_width() -> usize {
+    unsafe { MAP_DISPLAY_WIDTH.unwrap() }
+}
+pub fn map_display_height() -> usize {
+    unsafe { MAP_DISPLAY_HEIGHT.unwrap() }
+}
 
 /// Prints out the given map
-pub fn display_map() {
-    for y in 0..MAP_HEIGHT {
-        for x in 0..MAP_LENGTH {
+pub fn display_map() -> Result<(), io::Error> {
+    let mut terminal_row = 3;
+    let terminal_col = 81;
+    execute!(
+        terminal().backend_mut(),
+        cursor::MoveTo(terminal_col, terminal_row)
+    )?;
+
+    let horizontal_middle = player().position.0;
+    let vertical_middle = player().position.1;
+    let horizontal_dist = map_display_width() / 2;
+    let vertical_dist = map_display_height() / 2;
+
+    let left = isize::clamp(horizontal_middle as isize - horizontal_dist as isize, 0, map_width() as isize) as usize;
+    let right= usize::clamp(horizontal_middle + horizontal_dist, 0, map_width());
+    let top = isize::clamp(vertical_middle as isize - vertical_dist as isize, 0, map_width() as isize) as usize;
+    let bottom= usize::clamp(vertical_middle + vertical_dist, 0, map_width());
+
+    //let mut locked_stdout = unsafe { (*STDOUT_REF).lock() };
+    for y in top..bottom {
+        for x in left..right {
             // left and right sides of the tile rendering
             let left: String;
             let right: String;
@@ -26,9 +52,19 @@ pub fn display_map() {
 
 
             // print the left and right sides of the tile
+            //let _ = locked_stdout.write(format!("{}{}", left, right).as_bytes());
             print!("{}{}", left, right);
         }
+
+        terminal_row += 1;
+        execute!(
+            //locked_stdout,
+            terminal().backend_mut(),
+            cursor::MoveTo(terminal_col, terminal_row)
+        )?;
     }
+
+    Ok(())
 }
 
 

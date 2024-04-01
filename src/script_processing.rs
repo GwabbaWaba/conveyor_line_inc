@@ -1,24 +1,20 @@
 use std::{collections::HashSet, fs::{self, DirEntry}, sync::{Arc, Mutex}};
 
-use crossterm::{cursor, event::{KeyCode, KeyEvent, KeyEventState, KeyModifiers}};
+use crossterm::{cursor, event::{KeyCode, KeyEvent, KeyEventState, KeyModifiers}, execute};
 use json::{object::Object, JsonValue};
 use rlua::{Context, Function, Lua, Table, ToLua, ToLuaMulti, Value};
 
-use crate::{dir_entry_is_dir, game_data_dump, identifier_dump, last_tick, lua, player, tile_map, time_between_ticks, write_to_debug, write_to_debug_pretty, Tile, CURSOR_POS, LAST_TICK, LUA, MAP_HEIGHT, MAP_LENGTH, MODULES_PATH, STATE_CHANGED};
+use crate::{dir_entry_is_dir, do_the_lua, game_data_dump, identifier_dump, last_tick, lua, map_height, map_width, player, terminal, tile_map, time_between_ticks, write_to_debug, write_to_debug_pretty, Tile, LAST_TICK, LUA_REF, MAP_HEIGHT, MAP_REDRAW_QUEUED, MAP_WIDTH, MODULES_PATH, UI_REDRAW_QUEUED};
 
-pub fn run_lua_scripts_from_path(path: &str, lua: Arc<Mutex<Lua>>) {
+pub fn run_lua_scripts_from_path(path: &str, lua: &Lua) {
     let dir = fs::read_dir(path).unwrap();
     
     for data in dir {
         let data = data.unwrap();
 
-        lua.lock().unwrap().context(|lua_context| {
+        lua.context(|lua_context| {
             load_lua_script(Ok(&data), lua_context);
         });
-    }
-
-    unsafe { 
-        LUA = Some(lua)
     }
 }
 
@@ -162,6 +158,7 @@ pub fn load_default_lua_data(lua_context: Context) {
 
     globals.set("print", Value::Nil).unwrap();
 
+
     // preset global variables
     // core
     {
@@ -184,13 +181,13 @@ pub fn load_default_lua_data(lua_context: Context) {
         core.set("print", print_to_debug).unwrap();
 
         let reload = lua_context.create_function(|_, ()|{
-            let new_lua: Arc<Mutex<Lua>> = Arc::new(Mutex::new( Lua::new() ));
 
-            new_lua.lock().unwrap().context(|lua_context|{
+            let new_lua: Lua = Lua::new();
+
+            new_lua.context(|lua_context|{
                 load_default_lua_data(lua_context);
             });
-            run_lua_scripts_from_path(MODULES_PATH, new_lua);
-
+            run_lua_scripts_from_path(MODULES_PATH, &new_lua);
             Ok(())
         }).unwrap();
         core.set("reload", reload).unwrap();
@@ -226,12 +223,15 @@ pub fn load_default_lua_data(lua_context: Context) {
         terminal_table.set("getSize", get_terminal_size).unwrap();
 
         let cursor_pos_table = lua_context.create_table().unwrap();
-        cursor_pos_table.set("x", unsafe { CURSOR_POS.0 }).unwrap();
-        cursor_pos_table.set("y", unsafe { CURSOR_POS.1 }).unwrap();
+        //cursor_pos_table.set("x", unsafe { CURSOR_POS.0 }).unwrap();
+        //cursor_pos_table.set("y", unsafe { CURSOR_POS.1 }).unwrap();
         terminal_table.set("cursorPos", cursor_pos_table).unwrap();
 
         let move_cursor = lua_context.create_function(|_, (x, y): (u16, u16)| {
-            
+            execute!(
+                terminal().backend_mut(),
+                cursor::MoveTo(x, y)
+            ).unwrap();
             Ok(())
         }).unwrap();
         terminal_table.set("moveCursor", move_cursor).unwrap();
@@ -251,6 +251,7 @@ pub fn load_default_lua_data(lua_context: Context) {
         events_table.set("TickEvents", lua_context.create_table().unwrap()).unwrap();
         events_table.set("KeyEvents", lua_context.create_table().unwrap()).unwrap();
         events_table.set("CommandEvents", lua_context.create_table().unwrap()).unwrap();
+        events_table.set("PostMapDraw", lua_context.create_table().unwrap()).unwrap();
 
         core.set("Events", events_table).unwrap();
     }
@@ -318,8 +319,20 @@ pub fn load_default_lua_data(lua_context: Context) {
         tile_map_table.set("setFromId", tile_map_set_from_id).unwrap();
         lua_map.set("TileMap", tile_map_table).unwrap();
 
-        lua_map.set("width", MAP_LENGTH - 1).unwrap();
-        lua_map.set("height", MAP_HEIGHT - 1).unwrap();
+        
+
+        lua_map.set("width", lua_context.create_function(|_, ()| 
+            { Ok(map_width() - 1) }).unwrap()
+        ).unwrap();
+        lua_map.set("height", lua_context.create_function(|_, ()| 
+            { Ok(map_height() - 1) }).unwrap()
+        ).unwrap();
+        lua_map.set("queueMapRedraw", lua_context.create_function(|_, ()| 
+            { 
+                unsafe { MAP_REDRAW_QUEUED = true }
+                Ok(())
+            }).unwrap()
+        ).unwrap();
 
         game_info_table.set("Map", lua_map).unwrap();
 
@@ -360,12 +373,17 @@ pub fn load_default_lua_data(lua_context: Context) {
     }
     // ui render
     {
-        let buffer_map_redraw = lua_context.create_function(|_, ()| {
-            unsafe { STATE_CHANGED = true; }
+        let ui_table = lua_context.create_table().unwrap();
+
+        let queue_redraw = lua_context.create_function(|_, ()| {
+            unsafe { UI_REDRAW_QUEUED = true; }
             Ok(())
         }).unwrap();
+        ui_table.set("queueRedraw", queue_redraw).unwrap();
 
-        core.set("bufferMapRedraw", buffer_map_redraw).unwrap();
+        ui_table.set("UiElements", lua_context.create_table().unwrap()).unwrap();
+
+        core.set("ui", ui_table).unwrap();
     }
     // tick
     {
@@ -407,71 +425,58 @@ pub fn keycode_to_string(keycode: KeyCode) -> String{
 }
 
 pub fn call_key_events(event: &KeyEvent) {
-    lua().lock().unwrap().context(|lua_context| {
-        let globals = lua_context.globals();
+    lua().context(|lua_context| do_the_lua(lua_context, &["Events", "KeyEvents"], |lua_context, innards| {
+        let key_events = innards[3].clone();
 
-        if let Ok(core) = globals.get::<_, Table>("Core") {
-            if let Ok(events) = core.get::<_, Table>("Events") {
-                if let Ok(key_events) = events.get::<_, Table>("KeyEvents") {
-                    let luafied_event = lua_context.create_table().unwrap();
-                    let (code, modifiers, kind, state) = (event.code, event.modifiers, event.kind, event.state);
+        let luafied_event = lua_context.create_table().unwrap();
+        let (code, modifiers, kind, state) = (event.code, event.modifiers, event.kind, event.state);
 
-                    let luafied_code = keycode_to_string(code);
+        let luafied_code = keycode_to_string(code);
                 
-                    let luafied_modifiers = lua_context.create_table().unwrap();
-                    let possible_modifiers = [
-                        KeyModifiers::CONTROL, KeyModifiers::ALT, KeyModifiers::SHIFT, 
-                        KeyModifiers::HYPER, KeyModifiers::SUPER, KeyModifiers::META,
-                        KeyModifiers::NONE
-                    ];
-                    for possible in possible_modifiers { 
-                        let debugged_modifier = format!("{:?}", possible).to_lowercase();
-                        luafied_modifiers.set(&debugged_modifier[13..(debugged_modifier.len()-1)], modifiers.contains(possible)).unwrap();
-                    }
+        let luafied_modifiers = lua_context.create_table().unwrap();
+        let possible_modifiers = [
+            KeyModifiers::CONTROL, KeyModifiers::ALT, KeyModifiers::SHIFT, 
+            KeyModifiers::HYPER, KeyModifiers::SUPER, KeyModifiers::META,
+            KeyModifiers::NONE
+        ];
+        for possible in possible_modifiers { 
+            let debugged_modifier = format!("{:?}", possible).to_lowercase();
+            luafied_modifiers.set(&debugged_modifier[13..(debugged_modifier.len()-1)], modifiers.contains(possible)).unwrap();
+        }
 
-                    let luafied_kind = format!("{:?}", kind).to_lowercase();
+        let luafied_kind = format!("{:?}", kind).to_lowercase();
                 
-                    let luafied_state = lua_context.create_table().unwrap();
-                    let possible_states = [
-                        KeyEventState::CAPS_LOCK, KeyEventState::KEYPAD, KeyEventState::NUM_LOCK,
-                        KeyEventState::NONE
-                    ];
-                    for possible in possible_states { 
-                        let debugged_state = format!("{:?}", possible).to_lowercase();
-                        luafied_state.set(&debugged_state[14..(debugged_state.len()-1)], state.contains(possible)).unwrap();
-                    }
+        let luafied_state = lua_context.create_table().unwrap();
+        let possible_states = [
+            KeyEventState::CAPS_LOCK, KeyEventState::KEYPAD, KeyEventState::NUM_LOCK,
+            KeyEventState::NONE
+        ];
+        for possible in possible_states { 
+            let debugged_state = format!("{:?}", possible).to_lowercase();
+            luafied_state.set(&debugged_state[14..(debugged_state.len()-1)], state.contains(possible)).unwrap();
+        }
                 
-                    luafied_event.set("code", luafied_code).unwrap();
-                    luafied_event.set("modifiers", luafied_modifiers).unwrap();
-                    luafied_event.set("kind", luafied_kind).unwrap();
-                    luafied_event.set("state", luafied_state).unwrap();
+        luafied_event.set("code", luafied_code).unwrap();
+        luafied_event.set("modifiers", luafied_modifiers).unwrap();
+        luafied_event.set("kind", luafied_kind).unwrap();
+        luafied_event.set("state", luafied_state).unwrap();
     
-                    for pair in key_events.pairs::<Value, Function>() {
-                        let pair = pair.unwrap();
-                        if let Err(e) = pair.1.call::<Table, ()>(luafied_event.clone()) {
-                            write_to_debug_pretty(format!("{:?}:\n{:?}", pair.0, e));
-                        }
-                    }
-                }
+        for pair in key_events.pairs::<Value, Function>() {
+            let pair = pair.unwrap();
+            if let Err(e) = pair.1.call::<Table, ()>(luafied_event.clone()) {
+                write_to_debug_pretty(format!("{:?}:\n{:?}", pair.0, e));
             }
         }
-    });
+    }));
+    
 }
 
 pub fn call_lua_events<T: for<'a> ToLuaMulti<'a> + Clone>(event_key: &str, args: T) {
+    lua().context(|lua_context| do_the_lua(lua_context, &["Events", event_key], |_, innards| {
+        let events_table = &innards[3];
 
-    lua().lock().unwrap().context(|lua_context| {
-        let globals = lua_context.globals();
-
-        if let Ok(core) = globals.get::<_, Table>("Core") {
-            if let Ok(events) = core.get::<_, Table>("Events") {
-                if let Ok(events_table) = events.get::<_, Table>(event_key) {
-    
-                    for pair in events_table.pairs::<Value, Function>() {
-                        pair.unwrap().1.call::<T, ()>(args.clone()).unwrap();
-                    }
-                }
-            }
+        for pair in events_table.clone().pairs::<Value, Function>() {
+            pair.unwrap().1.call::<T, ()>(args.clone()).unwrap();
         }
-    });
+    }));
 }

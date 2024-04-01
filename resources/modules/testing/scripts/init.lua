@@ -1,0 +1,1 @@
+require("resources.modules.conveyor_line_core.scripts.init")

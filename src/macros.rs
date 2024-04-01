@@ -31,22 +31,3 @@ macro_rules! auto_builder {
         }
     };
 }
-
-// macros
-macro_rules! ignorant_queue {
-    ($writer:expr $(, $command:expr)* $(,)?) => {
-        let _ = $crate::queue!($writer() $(, $command)*);
-    };
-}
-
-macro_rules! ignorant_execute {
-    ($writer:expr $(, $command:expr)* $(,)?) => {
-        let _ = $crate::execute!($writer() $(, $command)*);
-    };
-}
-
-macro_rules! ignorant_flush {
-    ($writer:expr) => {
-        let _ = $writer().flush();
-    };
-}
