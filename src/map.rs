@@ -45,15 +45,6 @@ pub fn gen_map<T: Clone, Y>(mut weighted_random: WeightedRandom<T>, f: fn(T) -> 
     let mut map: Vec<Vec<Y>> = Vec::new();
 
     for column in 0..map_height() {
-        if poll(Duration::from_secs(0)).unwrap() {
-            // handle input
-            if let Ok(Event::Key(event)) = read() {
-                if event.code == KeyCode::Char('c') && event.modifiers.contains(KeyModifiers::CONTROL) {
-                    exit_successful().expect("exited, but not successfully");
-                }
-            }
-        }
-        
         map.push(Vec::new() as Vec<Y>);
         for _ in 0..map_width() {
 

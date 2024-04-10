@@ -7,8 +7,11 @@ local quickEvents = commsLib.quickEvents
 -- previous command inputs, tracked for previous
 local prevCommands = {}
 local prevCommandsNextIndex = 1
-local quickCommandsInLoop = 0
-local ticksSinceLastQuickCommand = 0
+
+-- quick event stuffs
+local quickEventChargePerTick = 0.2;
+local quickEventChargeRequired = 1;
+local currentQuickEventCharge = 0;
 
 -- commands
 
@@ -174,7 +177,6 @@ end
     walk dir num
   ]]
 local function walk(input)
-    if quickCommandsInLoop > 1 then return end
     move(input)
 end
 
@@ -264,12 +266,12 @@ end
 -- the command names for the user end
 local commandFunctions = {
     -- help
-    ["help"] = help,
+    ["help"] = {help},
     -- fundamentals
-    ["set"] = set, ["move"] = move, ["walk"] = walk, ["break"] = breakCommand, ["place"] = place,
-    ["alias"] = alias,
+    ["set"] = {set}, ["move"] = {move, bypassDelay = true}, ["walk"] = {walk}, ["break"] = {breakCommand}, ["place"] = {place},
+    ["alias"] = {alias},
     -- debug
-    ["print"] = printCommand, ["reload"] = reload, ["time-travel"] = timeTravel
+    ["print"] = {printCommand}, ["reload"] = {reload}, ["time-travel"] = {timeTravel}
 }
 
 local function getWithWrapAround(num, min, max)
@@ -332,13 +334,12 @@ local function commandEvent(input)
 
     if input.command then
         local command = commandFunctions[input.command]
-        if command then runCommand(command, input) end
+        if command then runCommand(command[1], input) end
     end
 end
 
 -- key command event listener
 local function quickCommand(keyEvent)
-    quickCommandsInLoop = quickCommandsInLoop + 1
     local keyCode = commsLib.keyCodeWithModifiers(keyEvent)
     
     local quickEvent = quickEvents[keyCode]
@@ -346,17 +347,16 @@ local function quickCommand(keyEvent)
         for i, quickComm in ipairs(quickEvent.commands) do
             local command = commandFunctions[quickComm]
             
-            if command then 
+            if command and (command["bypassDelay"] or currentQuickEventCharge >= quickEventChargeRequired) then
                 local inputFromQuickEvent = {
                     command = quickComm,
                     arguments = quickEvent.arguments[i]
                 }
-                runCommand(command, inputFromQuickEvent)
+                runCommand(command[1], inputFromQuickEvent)
+                currentQuickEventCharge = quickEventChargeRequired / 2
             end
         end
     end
-    
-    ticksSinceLastQuickCommand = 0
 end
 
 local key_event_functions = {quickCommand}
@@ -372,8 +372,7 @@ for i = 1, #commandEventFunctions do
 end
 
 local function updateTickCounter()
-    ticksSinceLastQuickCommand = ticksSinceLastQuickCommand + 1
-    quickCommandsInLoop = 0
+    currentQuickEventCharge = math.min(currentQuickEventCharge + quickEventChargePerTick, quickEventChargeRequired)
 end
 
 Core.Events.TickEvents[#Core.Events.TickEvents+1] = updateTickCounter

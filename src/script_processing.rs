@@ -2,27 +2,51 @@ use std::{collections::HashSet, fs::{self, DirEntry}, sync::{Arc, Mutex}};
 
 use crossterm::{cursor, event::{KeyCode, KeyEvent, KeyEventState, KeyModifiers}, execute};
 use json::{object::Object, JsonValue};
-use rlua::{Context, Function, Lua, Table, ToLua, ToLuaMulti, Value};
+use mlua::{Function, IntoLua, IntoLuaMulti, Lua, Table, Value};
 
-use crate::{dir_entry_is_dir, do_the_lua, game_data_dump, identifier_dump, last_tick, lua, map_height, map_width, player, terminal, tile_map, time_between_ticks, write_to_debug, write_to_debug_pretty, Tile, LAST_TICK, LUA_REF, MAP_HEIGHT, MAP_REDRAW_QUEUED, MAP_WIDTH, MODULES_PATH, UI_REDRAW_QUEUED};
+use crate::{dir_entry_is_dir, game_data_dump, identifier_dump, last_tick, map_height, map_width, player, terminal, tile_map, time_between_ticks, write_to_debug, write_to_debug_pretty, Tile, LAST_TICK, MAP_HEIGHT, MAP_REDRAW_QUEUED, MAP_WIDTH, MODULES_PATH, UI_REDRAW_QUEUED};
 
-pub fn run_lua_scripts_from_path(path: &str, lua: &Lua) {
+pub fn do_the_lua<'a, F: FnOnce(Vec<Table<'a>>)>(lua: &'a Lua, path: &[&str], f: F) {
+    let globals = lua.globals();
+
+    if let Ok(core) = globals.get::<_, Table>("Core") {
+        let mut v = vec![globals, core];
+        let mut i = 1;
+
+        // makeshift goto
+        'goto: loop {
+            let comp = path.len();
+            while let Ok(table) = v[i].get::<_, Table>(path[{
+                let i = i - 1;
+                if i >= comp { break 'goto; }
+                i
+            }]) {
+                v.push(table);
+                i += 1;
+            }
+            
+            break 'goto;
+        }
+
+        f(v);
+    }
+}
+
+pub fn run_lua_scripts_from_path(lua: &Lua, path: &str) {
     let dir = fs::read_dir(path).unwrap();
     
     for data in dir {
         let data = data.unwrap();
 
-        lua.context(|lua_context| {
-            load_lua_script(Ok(&data), lua_context);
-        });
+        load_lua_script(lua, Ok(&data));
     }
 }
 
-pub fn load_lua_script(data: Result<&DirEntry, &std::io::Error>, lua_context: Context) {
+pub fn load_lua_script(lua: &Lua, data: Result<&DirEntry, &std::io::Error>) {
     if dir_entry_is_dir(data) {
         let data = fs::read_dir(data.unwrap().path()).unwrap();
         for data in data {
-            load_lua_script(data.as_ref(), lua_context);
+            load_lua_script(lua, data.as_ref());
         }
 
     } else {
@@ -33,7 +57,7 @@ pub fn load_lua_script(data: Result<&DirEntry, &std::io::Error>, lua_context: Co
                 
                 let script_contents = fs::read_to_string(data.path()).unwrap();
 
-                if let Err(e) = lua_context.load(&script_contents).exec() {
+                if let Err(e) = lua.load(&script_contents).exec() {
                     write_to_debug_pretty(format!("{}:\n{:?}", data.file_name().to_str().unwrap_or("Invalid utf-8"), e));
                 }
 
@@ -49,37 +73,37 @@ pub fn get_json_info(path: String) -> JsonValue {
     config_data
 }
 
-fn json_object_to_lua_table<'a>(lua_context: Context<'a>, object: &Object) -> Table<'a>{
-    let table = lua_context.create_table().unwrap();
+fn json_object_to_lua_table<'a>(lua: &'a Lua, object: Object) -> Table<'a> {
+    let table = lua.create_table().unwrap();
 
     for (key, val) in object.iter() {
-        table.set(key, json_to_lua(lua_context, val)).unwrap();
+        table.set(key, json_to_lua(lua, val.clone())).unwrap();
     }
 
     table
 }
 
-fn json_array_to_lua_table<'a>(lua_context: Context<'a>, arr: &Vec<JsonValue>) -> Table<'a> {
-    let table = lua_context.create_table().unwrap();
+fn json_array_to_lua_table<'a>(lua: &'a Lua, arr: Vec<JsonValue>) -> Table<'a> {
+    let table = lua.create_table().unwrap();
 
     let mut last_index = 1;
     for val in arr {
-        table.set(last_index, json_to_lua(lua_context, val)).unwrap();
+        table.set(last_index, json_to_lua(lua, val.clone())).unwrap();
         last_index += 1;
     }
 
     table
 }
 
-fn json_to_lua<'a>(lua_context: Context<'a>, json_val: &JsonValue) -> rlua::Value<'a> {
+fn json_to_lua<'a>(lua: &'a Lua, json_val: JsonValue) -> mlua::Value<'a> {
     match json_val {
         JsonValue::Null => Value::Nil,
-        JsonValue::Short(s) => s.as_str().to_lua(lua_context).unwrap(),
-        JsonValue::String(s) => s.as_str().to_lua(lua_context).unwrap(),
-        JsonValue::Number(n) => Value::Number((*n).into()),
-        JsonValue::Boolean(b) => Value::Boolean(*b),
-        JsonValue::Object(o) => Value::Table(json_object_to_lua_table(lua_context, &o)),
-        JsonValue::Array(a) => Value::Table(json_array_to_lua_table(lua_context, &a)),
+        JsonValue::Short(s) => s.as_str().into_lua(lua).unwrap(),
+        JsonValue::String(s) => s.as_str().into_lua(lua).unwrap(),
+        JsonValue::Number(n) => Value::Number((n).into()),
+        JsonValue::Boolean(b) => Value::Boolean(b),
+        JsonValue::Object(o) => Value::Table(json_object_to_lua_table(lua, o)),
+        JsonValue::Array(a) => Value::Table(json_array_to_lua_table(lua, a)),
     }
 }
 
@@ -136,7 +160,7 @@ fn lua_table_to_json(lua_table: &Table) -> JsonValue {
 }
 
 
-fn lua_to_json(lua_val: &rlua::Value<'_>) -> JsonValue {
+fn lua_to_json(lua_val: &mlua::Value<'_>) -> JsonValue {
     match lua_val {
         Value::Nil => JsonValue::Null,
         Value::Boolean(b) => JsonValue::Boolean(*b),
@@ -152,9 +176,10 @@ fn lua_to_json(lua_val: &rlua::Value<'_>) -> JsonValue {
     }
 }
 
-pub fn load_default_lua_data(lua_context: Context) {
-    let globals = lua_context.globals();
-    let core = lua_context.create_table().unwrap();
+pub fn load_default_lua_data(lua: &mut Arc<Mutex<Lua>>) {
+    let lua_locked = lua.lock().unwrap();
+    let globals = lua_locked.globals();
+    let core = lua_locked.create_table().unwrap();
 
     globals.set("print", Value::Nil).unwrap();
 
@@ -162,7 +187,7 @@ pub fn load_default_lua_data(lua_context: Context) {
     // preset global variables
     // core
     {
-        let print_to_debug = lua_context.create_function(|_, text: Value| {
+        let print_to_debug = lua_locked.create_function(|_, text: Value| {
             write_to_debug(match text {
                 Value::Nil => String::from("Nil"),
                 Value::Boolean(b) => format!("{}", b),
@@ -180,24 +205,19 @@ pub fn load_default_lua_data(lua_context: Context) {
         }).unwrap();
         core.set("print", print_to_debug).unwrap();
 
-        let reload = lua_context.create_function(|_, ()|{
+        let reload = lua_locked.create_function(|_, ()|{
 
-            let new_lua: Lua = Lua::new();
-
-            new_lua.context(|lua_context|{
-                load_default_lua_data(lua_context);
-            });
-            run_lua_scripts_from_path(MODULES_PATH, &new_lua);
+            /* TODO - make it ~*/
             Ok(())
         }).unwrap();
         core.set("reload", reload).unwrap();
 
-        let get_json_lua = lua_context.create_function(|lua_context, path: String| {
-            Ok(json_to_lua(lua_context, &get_json_info(path)))
+        let get_json_lua = lua_locked.create_function(|lua, path: String| {
+            Ok(json_to_lua(lua, get_json_info(path)))
         }).unwrap();
         core.set("getJSON", get_json_lua).unwrap();
 
-        let set_json_lua = lua_context.create_function(|lua_context, (path, table): (String, Table)| {
+        let set_json_lua = lua_locked.create_function(|_, (path, table): (String, Table)| {
             let to_write = lua_table_to_json(&table);
             let to_write = json::stringify(to_write);
             let res = fs::write(path, to_write);
@@ -210,8 +230,8 @@ pub fn load_default_lua_data(lua_context: Context) {
     }
     // terminal management
     {
-        let terminal_table = lua_context.create_table().unwrap();
-        let get_terminal_size = lua_context.create_function(|lua_context, ()| {
+        let terminal_table = lua_locked.create_table().unwrap();
+        let get_terminal_size = lua_locked.create_function(|lua_context, ()| {
             let (terminal_width, terminal_height) = crossterm::terminal::size().unwrap();
 
             let luafied_terminal_size = lua_context.create_table().unwrap();
@@ -222,12 +242,12 @@ pub fn load_default_lua_data(lua_context: Context) {
         }).unwrap();
         terminal_table.set("getSize", get_terminal_size).unwrap();
 
-        let cursor_pos_table = lua_context.create_table().unwrap();
+        let cursor_pos_table = lua_locked.create_table().unwrap();
         //cursor_pos_table.set("x", unsafe { CURSOR_POS.0 }).unwrap();
         //cursor_pos_table.set("y", unsafe { CURSOR_POS.1 }).unwrap();
         terminal_table.set("cursorPos", cursor_pos_table).unwrap();
 
-        let move_cursor = lua_context.create_function(|_, (x, y): (u16, u16)| {
+        let move_cursor = lua_locked.create_function(|_, (x, y): (u16, u16)| {
             execute!(
                 terminal().backend_mut(),
                 cursor::MoveTo(x, y)
@@ -236,7 +256,7 @@ pub fn load_default_lua_data(lua_context: Context) {
         }).unwrap();
         terminal_table.set("moveCursor", move_cursor).unwrap();
 
-        let print_to_terminal = lua_context.create_function(|_, text: String| {
+        let print_to_terminal = lua_locked.create_function(|_, text: String| {
             println!("{}", text);
             Ok(())
         }).unwrap();
@@ -246,39 +266,39 @@ pub fn load_default_lua_data(lua_context: Context) {
     }
     // events
     {
-        let events_table = lua_context.create_table().unwrap();
-        events_table.set("PostDeserializationEvents", lua_context.create_table().unwrap()).unwrap();
-        events_table.set("TickEvents", lua_context.create_table().unwrap()).unwrap();
-        events_table.set("KeyEvents", lua_context.create_table().unwrap()).unwrap();
-        events_table.set("CommandEvents", lua_context.create_table().unwrap()).unwrap();
-        events_table.set("PostMapDraw", lua_context.create_table().unwrap()).unwrap();
+        let events_table = lua_locked.create_table().unwrap();
+        events_table.set("PostDeserializationEvents", lua_locked.create_table().unwrap()).unwrap();
+        events_table.set("TickEvents", lua_locked.create_table().unwrap()).unwrap();
+        events_table.set("KeyEvents", lua_locked.create_table().unwrap()).unwrap();
+        events_table.set("CommandEvents", lua_locked.create_table().unwrap()).unwrap();
+        events_table.set("PostMapDraw", lua_locked.create_table().unwrap()).unwrap();
 
         core.set("Events", events_table).unwrap();
     }
     // initialization info
     {
-        let initialization_info = lua_context.create_table().unwrap();
-        initialization_info.set("GameData", lua_context.create_table().unwrap()).unwrap();
+        let initialization_info = lua_locked.create_table().unwrap();
+        initialization_info.set("GameData", lua_locked.create_table().unwrap()).unwrap();
 
         core.set("InitializationInfo", initialization_info).unwrap();
     }
     // game info
     {
-        let game_info_table = lua_context.create_table().unwrap();
+        let game_info_table = lua_locked.create_table().unwrap();
         // player
-        let lua_player = lua_context.create_table().unwrap();
+        let lua_player = lua_locked.create_table().unwrap();
 
-        let player_get_x = lua_context.create_function(|_, ()| {
+        let player_get_x = lua_locked.create_function(|_, ()| {
             Ok(player().position.0)
         }).unwrap();
         lua_player.set("getX", player_get_x).unwrap();
 
-        let player_get_y = lua_context.create_function(|_, ()| {
+        let player_get_y = lua_locked.create_function(|_, ()| {
             Ok(player().position.1)
         }).unwrap();
         lua_player.set("getY", player_get_y).unwrap();
 
-        let player_set_pos = lua_context.create_function(|_, (x, y): (usize, usize)| {
+        let player_set_pos = lua_locked.create_function(|_, (x, y): (usize, usize)| {
             player().position = (x, y);
             Ok(())
         }).unwrap();
@@ -287,10 +307,10 @@ pub fn load_default_lua_data(lua_context: Context) {
         game_info_table.set("Player", lua_player).unwrap();
 
         // map
-        let lua_map = lua_context.create_table().unwrap();
-        let tile_map_table = lua_context.create_table().unwrap();
+        let lua_map = lua_locked.create_table().unwrap();
+        let tile_map_table = lua_locked.create_table().unwrap();
 
-        let tile_map_get = lua_context.create_function(|lua_context, (x, y): (usize, usize)|{
+        let tile_map_get = lua_locked.create_function(|lua_context, (x, y): (usize, usize)|{
             let requested = tile_map()[y][x];
 
             let luafied_tile = lua_context.create_table().unwrap();
@@ -306,7 +326,7 @@ pub fn load_default_lua_data(lua_context: Context) {
         }).unwrap();
         tile_map_table.set("get", tile_map_get).unwrap();
 
-        let tile_map_set_from_id = lua_context.create_function(|_, (x, y, tile_id): (usize, usize, u16)| {
+        let tile_map_set_from_id = lua_locked.create_function(|_, (x, y, tile_id): (usize, usize, u16)| {
             let tile = Tile::new(tile_id);
             match tile {
                 Some(tile) => {
@@ -321,13 +341,13 @@ pub fn load_default_lua_data(lua_context: Context) {
 
         
 
-        lua_map.set("width", lua_context.create_function(|_, ()| 
+        lua_map.set("width", lua_locked.create_function(|_, ()| 
             { Ok(map_width() - 1) }).unwrap()
         ).unwrap();
-        lua_map.set("height", lua_context.create_function(|_, ()| 
+        lua_map.set("height", lua_locked.create_function(|_, ()| 
             { Ok(map_height() - 1) }).unwrap()
         ).unwrap();
-        lua_map.set("queueMapRedraw", lua_context.create_function(|_, ()| 
+        lua_map.set("queueMapRedraw", lua_locked.create_function(|_, ()| 
             { 
                 unsafe { MAP_REDRAW_QUEUED = true }
                 Ok(())
@@ -337,12 +357,12 @@ pub fn load_default_lua_data(lua_context: Context) {
         game_info_table.set("Map", lua_map).unwrap();
 
         // tile
-        let tile_table = lua_context.create_table().unwrap();
-        let tile_types_table = lua_context.create_table().unwrap();
-        let tile_idents_table = lua_context.create_table().unwrap();
+        let tile_table = lua_locked.create_table().unwrap();
+        let tile_types_table = lua_locked.create_table().unwrap();
+        let tile_idents_table = lua_locked.create_table().unwrap();
 
         // tile type
-        let tile_type_get = lua_context.create_function(|lua_context, tile_id: u16| {
+        let tile_type_get = lua_locked.create_function(|lua_context, tile_id: u16| {
             let luafied_tile_type = lua_context.create_table().unwrap();
             if let Some(tile_type) = game_data_dump().tile_types.get(&tile_id) {
                 luafied_tile_type.set("solid", tile_type.solid).unwrap();
@@ -354,7 +374,7 @@ pub fn load_default_lua_data(lua_context: Context) {
         tile_table.set("Types", tile_types_table).unwrap();
         
         // tile ident
-        let tile_ident_get = lua_context.create_function(|_, internal_name: String| {
+        let tile_ident_get = lua_locked.create_function(|_, internal_name: String| {
             let ret = identifier_dump().tile_types.get_by_left(&internal_name);
             let ret = match ret {
                 Some(id) => Value::Number(*id as f64),
@@ -373,22 +393,22 @@ pub fn load_default_lua_data(lua_context: Context) {
     }
     // ui render
     {
-        let ui_table = lua_context.create_table().unwrap();
+        let ui_table = lua_locked.create_table().unwrap();
 
-        let queue_redraw = lua_context.create_function(|_, ()| {
+        let queue_redraw = lua_locked.create_function(|_, ()| {
             unsafe { UI_REDRAW_QUEUED = true; }
             Ok(())
         }).unwrap();
         ui_table.set("queueRedraw", queue_redraw).unwrap();
 
-        ui_table.set("UiElements", lua_context.create_table().unwrap()).unwrap();
+        ui_table.set("UiElements", lua_locked.create_table().unwrap()).unwrap();
 
         core.set("ui", ui_table).unwrap();
     }
     // tick
     {
-        let tick_table = lua_context.create_table().unwrap();
-        let add_time = lua_context.create_function(|_, amount: u32| {
+        let tick_table = lua_locked.create_table().unwrap();
+        let add_time = lua_locked.create_function(|_, amount: u32| {
             unsafe {
                 LAST_TICK = Some(last_tick() + (time_between_ticks() * amount));
             }
@@ -401,6 +421,8 @@ pub fn load_default_lua_data(lua_context: Context) {
     }
 
     globals.set("Core", core).unwrap();
+
+    run_lua_scripts_from_path(&lua_locked, MODULES_PATH);
 }
 
 // hellish conversion to String
@@ -424,16 +446,16 @@ pub fn keycode_to_string(keycode: KeyCode) -> String{
     }
 }
 
-pub fn call_key_events(event: &KeyEvent) {
-    lua().context(|lua_context| do_the_lua(lua_context, &["Events", "KeyEvents"], |lua_context, innards| {
+pub fn call_key_events(lua: &Lua, event: &KeyEvent) {
+    do_the_lua(lua, &["Events", "KeyEvents"], |innards| {
         let key_events = innards[3].clone();
 
-        let luafied_event = lua_context.create_table().unwrap();
+        let luafied_event = lua.create_table().unwrap();
         let (code, modifiers, kind, state) = (event.code, event.modifiers, event.kind, event.state);
 
         let luafied_code = keycode_to_string(code);
                 
-        let luafied_modifiers = lua_context.create_table().unwrap();
+        let luafied_modifiers = lua.create_table().unwrap();
         let possible_modifiers = [
             KeyModifiers::CONTROL, KeyModifiers::ALT, KeyModifiers::SHIFT, 
             KeyModifiers::HYPER, KeyModifiers::SUPER, KeyModifiers::META,
@@ -446,7 +468,7 @@ pub fn call_key_events(event: &KeyEvent) {
 
         let luafied_kind = format!("{:?}", kind).to_lowercase();
                 
-        let luafied_state = lua_context.create_table().unwrap();
+        let luafied_state = lua.create_table().unwrap();
         let possible_states = [
             KeyEventState::CAPS_LOCK, KeyEventState::KEYPAD, KeyEventState::NUM_LOCK,
             KeyEventState::NONE
@@ -467,16 +489,16 @@ pub fn call_key_events(event: &KeyEvent) {
                 write_to_debug_pretty(format!("{:?}:\n{:?}", pair.0, e));
             }
         }
-    }));
+    });
     
 }
 
-pub fn call_lua_events<T: for<'a> ToLuaMulti<'a> + Clone>(event_key: &str, args: T) {
-    lua().context(|lua_context| do_the_lua(lua_context, &["Events", event_key], |_, innards| {
+pub fn call_lua_events<T: for<'a> IntoLuaMulti<'a> + Clone>(lua: &Lua, event_key: &str, args: T) {
+    do_the_lua(lua, &["Events", event_key], |innards| {
         let events_table = &innards[3];
 
         for pair in events_table.clone().pairs::<Value, Function>() {
             pair.unwrap().1.call::<T, ()>(args.clone()).unwrap();
         }
-    }));
+    });
 }

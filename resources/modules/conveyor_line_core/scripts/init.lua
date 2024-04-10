@@ -1,17 +1,18 @@
-local uiElemSize = 0
+local uiElementsSize = 0
 setmetatable(Core.ui.UiElements, {
+    -- replacing the key with a weird one & queueing redraw
     __newindex = function(t, key, value)
-        rawset(t, "Æ"..key, value)
-        uiElemSize = uiElemSize + (value and 1 or -1)
+        rawset(t, "*"..key, value)
+        uiElementsSize = uiElementsSize + (value and 1 or -1)
 
         Core.ui.queueRedraw()
     end,
     __index = function(t, key)
-        return rawget(t, "Æ"..key)
+        return rawget(t, "*"..key)
     end,
 
     __len = function(t)
-        return rawlen(t) + uiElemSize
+        return rawlen(t) + uiElementsSize
     end
 })
 

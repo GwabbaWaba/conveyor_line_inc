@@ -1,9 +1,9 @@
 use std::{any::Any, collections::HashMap, fs::{self, DirEntry}, io};
 use bimap::BiMap;
-use rlua::{Function, Table, Value};
+use mlua::{Function, Lua, Table, Value};
 use serde::Deserialize;
 
-use crate::{dir_entry_is_dir, display::{ColorDisplay, ColorDisplayBuilder, TextDisplay, TextDisplayBuilder}, lua, os_string_to_string, write_to_debug, write_to_debug_pretty, GroundType, ItemType, TileType};
+use crate::{dir_entry_is_dir, display::{ColorDisplay, ColorDisplayBuilder, TextDisplay, TextDisplayBuilder}, os_string_to_string, write_to_debug, write_to_debug_pretty, GroundType, ItemType, TileType};
 
 pub type DeserializationDump = HashMap<String, Vec<(String, ModuleDeserialization)>>;
 pub type PreMapDump<'a> = Vec<UnmappedData<'a>>;
@@ -451,7 +451,7 @@ fn get_in_file(file_data: &ModuleDeserialization) -> [Option<(String, Box<&dyn D
 
 
 // deserialization
-pub fn deserialize_modules_from_path(game_data: &mut DeserializationDump, path: &'static str) {
+pub fn deserialize_modules_from_path(lua: &Lua, game_data: &mut DeserializationDump, path: &'static str) {
     let dir = fs::read_dir(path).unwrap();
     
     for data in dir {
@@ -464,48 +464,46 @@ pub fn deserialize_modules_from_path(game_data: &mut DeserializationDump, path: 
         game_data.insert(data_key, data_stack);
     }
 
-    post_deserialization_events(game_data);
+    post_deserialization_events(lua, game_data);
 }
 
 /// run post deserialization lua events
-fn post_deserialization_events(game_data: &mut DeserializationDump) {
+fn post_deserialization_events(lua: &Lua, game_data: &mut DeserializationDump) {
+    let globals = lua.globals();
 
-    lua().context(|lua_context| {
-        let globals = lua_context.globals();
-
-        if let Ok(core) = globals.get::<_, Table>("Core") {
-            if let Ok(events) = core.get::<_, Table>("Events") {
-                if let Ok(post_deserialization_events) = events.get::<_, Table>("PostDeserializationEvents") {
-                    
-                    for pair in post_deserialization_events.pairs::<Value, Function>() {
-                        let pair = pair.unwrap();
-                        if let Err(e) = pair.1.call::<_, Value>(()) {
-                            write_to_debug_pretty(format!("{:?}:\n{:?}", pair.0, e));
-                        }
+    if let Ok(core) = globals.get::<_, Table>("Core") {
+        if let Ok(events) = core.get::<_, Table>("Events") {
+            if let Ok(post_deserialization_events) = events.get::<_, Table>("PostDeserializationEvents") {
+                
+                for pair in post_deserialization_events.pairs::<Value, Function>() {
+                    let pair = pair.unwrap();
+                    if let Err(e) = pair.1.call::<_, Value>(()) {
+                        write_to_debug_pretty(format!("{:?}:\n{:?}", pair.0, e));
                     }
                 }
             }
+        }
 
-            if let Ok(lua_init_info) = core.get::<_, Table>("InitializationInfo") {
-                if let Ok(lua_game_data) = lua_init_info.get::<_, Table>("GameData") {
-                    for pair in lua_game_data.pairs::<String, Table>() {
-                        if let Ok((source, data_table)) = pair {
-                            match game_data.get_mut(&source) {
-                                Some(existing_data_stack) => {
-                                    data_table_to_data_stack(data_table, existing_data_stack);
-                                },
-                                None => {
-                                    let data_stack = Vec::new();
-                                    data_table_to_data_stack(data_table, &mut Vec::new());
-                                    game_data.insert(source, data_stack);
-                                },
-                            }
+        if let Ok(lua_init_info) = core.get::<_, Table>("InitializationInfo") {
+            if let Ok(lua_game_data) = lua_init_info.get::<_, Table>("GameData") {
+                for pair in lua_game_data.pairs::<String, Table>() {
+                    if let Ok((source, data_table)) = pair {
+                        match game_data.get_mut(&source) {
+                            Some(existing_data_stack) => {
+                                data_table_to_data_stack(data_table, existing_data_stack);
+                            },
+                            None => {
+                                let data_stack = Vec::new();
+                                data_table_to_data_stack(data_table, &mut Vec::new());
+                                game_data.insert(source, data_stack);
+                            },
                         }
                     }
                 }
             }
         }
-    });
+    }
+
 }
 
 fn data_table_to_data_stack(data_table: Table<'_>, data_stack: &mut Vec<(String, ModuleDeserialization)>) {

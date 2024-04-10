@@ -1,16 +1,10 @@
 
-use rlua::{Context, Function, Table, Value};
+use mlua::{Function, Lua, Table, Value};
 
-use crate::{lua, write_to_debug_pretty};
+use crate::write_to_debug_pretty;
 
-pub fn action_from_input(input: &str) {
-    lua().context(|lua_context| {
-        action_from_input_with_context(lua_context, input);
-    });
-}
-
-pub fn action_from_input_with_context(lua_context: Context, input: &str) {
-    let globals = lua_context.globals();
+pub fn action_from_input(lua: &Lua, input: &str) {
+    let globals = lua.globals();
 
     if let Ok(core) = globals.get::<_, Table>("Core") {
         if let Ok(events) = core.get::<_, Table>("Events") {
