@@ -2,24 +2,25 @@ use crossterm::{cursor, event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, 
 use linked_hash_map::LinkedHashMap;
 use mlua::Lua;
 
-use crate::{call_key_events, exit_successful, terminal};
+use crate::{call_key_events, exit_successful, terminal, write_to_debug};
 
-pub fn do_key_event(lua: &Lua, event: &AlmostKeyEvent, type_mode: &mut bool) {
+pub fn do_key_event(lua: &Lua, event: &AlmostKeyEvent, release_status: &KeyEventKind, type_mode: &mut bool) {
+    let release_status = release_status.to_owned();
     match (event.code, &mut *type_mode) {
         (KeyCode::Char('c'), _) if event.modifiers == KeyModifiers::CONTROL => {
             exit_successful().expect("exited, but not successfully");
         },
-        (KeyCode::F(1) | KeyCode::Tab, false) => {
+        (KeyCode::F(1) | KeyCode::Tab, false) if release_status == KeyEventKind::Release => {
             *type_mode = true;
         },
-        (KeyCode::F(1) | KeyCode::Tab, true) => {
+        (KeyCode::F(1) | KeyCode::Tab, true) if release_status == KeyEventKind::Release => {
             *type_mode = false;
         },
         (_, true) => {
-            /* action_from_input(_) ~*/
+            call_key_events(lua, &actualize_key_event(event, Some(release_status)), "TypeEvents");
         }
         (_, false) => {
-            call_key_events(lua, &actualize_key_event(event));
+            call_key_events(lua, &actualize_key_event(event, Some(release_status)), "KeyEvents");
         }
     }
 }
@@ -49,7 +50,7 @@ pub fn do_key_events(lua: &Lua, key_events: &mut LinkedHashMap<AlmostKeyEvent, K
         let this_state = key_event.state;
 
         let go_through = 
-            *release_status != KeyEventKind::Release && ((
+            (
                 this_modifiers == last_modifiers ||
                 !last_modifiers.contains(this_modifiers) ||
                 last_modifiers == KeyModifiers::NONE
@@ -58,12 +59,12 @@ pub fn do_key_events(lua: &Lua, key_events: &mut LinkedHashMap<AlmostKeyEvent, K
                 this_state == last_state ||
                 !last_state.contains(this_state) ||
                 last_state == KeyEventState::NONE
-            ));
+            );
 
         let mut queue_removal = true;
         if go_through {
-            queue_removal = key_event.state.contains(KeyEventState::CAPS_LOCK);
-            do_key_event(lua, key_event, type_mode);
+            queue_removal = *release_status == KeyEventKind::Release || key_event.state != KeyEventState::NONE;
+            do_key_event(lua, key_event, release_status, type_mode);
         }
 
         if queue_removal {
@@ -151,11 +152,11 @@ pub fn actualize_mouse_event(almost_mouse_event: &AlmostMouseEvent, mouse_event_
     }
 }
 
-pub fn actualize_key_event(almost_key_event: &AlmostKeyEvent) -> KeyEvent {
+pub fn actualize_key_event(almost_key_event: &AlmostKeyEvent, kind: Option<KeyEventKind>) -> KeyEvent {
     KeyEvent { 
         code: almost_key_event.code, 
         modifiers: almost_key_event.modifiers, 
-        kind: KeyEventKind::Press, 
+        kind: kind.unwrap_or(KeyEventKind::Press), 
         state: almost_key_event.state 
     }
 }

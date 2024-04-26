@@ -1,10 +1,10 @@
-use std::{collections::HashSet, fs::{self, DirEntry}, sync::{Arc, Mutex}};
+use std::{alloc::System, collections::HashSet, fs::{self, DirEntry}, sync::{Arc, Mutex}, thread, time::{Duration, SystemTime, UNIX_EPOCH}};
 
 use crossterm::{cursor, event::{KeyCode, KeyEvent, KeyEventState, KeyModifiers}, execute};
 use json::{object::Object, JsonValue};
 use mlua::{Function, IntoLua, IntoLuaMulti, Lua, Table, Value};
 
-use crate::{dir_entry_is_dir, game_data_dump, identifier_dump, last_tick, map_height, map_width, player, terminal, tile_map, time_between_ticks, write_to_debug, write_to_debug_pretty, Tile, LAST_TICK, MAP_HEIGHT, MAP_REDRAW_QUEUED, MAP_WIDTH, MODULES_PATH, UI_REDRAW_QUEUED};
+use crate::{dir_entry_is_dir, game_data_dump, identifier_dump, last_tick, map_height, map_width, player, terminal, tile_map, time_between_ticks, write_to_debug, write_to_debug_pretty, Point, Tile, LAST_TICK, MAP_HEIGHT, MAP_REDRAW_QUEUED, MAP_WIDTH, MODULES_PATH, UI_REDRAW_QUEUED};
 
 pub fn do_the_lua<'a, F: FnOnce(Vec<Table<'a>>)>(lua: &'a Lua, path: &[&str], f: F) {
     let globals = lua.globals();
@@ -178,6 +178,7 @@ fn lua_to_json(lua_val: &mlua::Value<'_>) -> JsonValue {
 
 pub fn load_default_lua_data(lua: &mut Arc<Mutex<Lua>>) {
     let lua_locked = lua.lock().unwrap();
+    
     let globals = lua_locked.globals();
     let core = lua_locked.create_table().unwrap();
 
@@ -207,7 +208,7 @@ pub fn load_default_lua_data(lua: &mut Arc<Mutex<Lua>>) {
 
         let reload = lua_locked.create_function(|_, ()|{
 
-            /* TODO - make it ~*/
+            
             Ok(())
         }).unwrap();
         core.set("reload", reload).unwrap();
@@ -227,6 +228,18 @@ pub fn load_default_lua_data(lua: &mut Arc<Mutex<Lua>>) {
             Ok(())
         }).unwrap();
         core.set("setJSON", set_json_lua).unwrap();
+
+        let sleep = lua_locked.create_function(|_, (millis): (u64)| {
+            thread::sleep(Duration::from_millis(millis));
+            Ok(())
+        }).unwrap();
+        core.set("sleep", sleep).unwrap();
+
+        let time = lua_locked.create_function(|_, ()| {
+            Ok(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis())
+        }).unwrap();
+        core.set("now", time).unwrap();
+
     }
     // terminal management
     {
@@ -257,10 +270,16 @@ pub fn load_default_lua_data(lua: &mut Arc<Mutex<Lua>>) {
         terminal_table.set("moveCursor", move_cursor).unwrap();
 
         let print_to_terminal = lua_locked.create_function(|_, text: String| {
-            println!("{}", text);
+            print!("{}", text);
             Ok(())
         }).unwrap();
         terminal_table.set("print", print_to_terminal).unwrap();
+
+        let println_to_terminal = lua_locked.create_function(|_, text: String| {
+            println!("{}", text);
+            Ok(())
+        }).unwrap();
+        terminal_table.set("println", println_to_terminal).unwrap();
         
         core.set("Terminal", terminal_table).unwrap();
     }
@@ -268,10 +287,12 @@ pub fn load_default_lua_data(lua: &mut Arc<Mutex<Lua>>) {
     {
         let events_table = lua_locked.create_table().unwrap();
         events_table.set("PostDeserializationEvents", lua_locked.create_table().unwrap()).unwrap();
+        events_table.set("PostMapDraw", lua_locked.create_table().unwrap()).unwrap();
+
         events_table.set("TickEvents", lua_locked.create_table().unwrap()).unwrap();
         events_table.set("KeyEvents", lua_locked.create_table().unwrap()).unwrap();
+        events_table.set("TypeEvents", lua_locked.create_table().unwrap()).unwrap();
         events_table.set("CommandEvents", lua_locked.create_table().unwrap()).unwrap();
-        events_table.set("PostMapDraw", lua_locked.create_table().unwrap()).unwrap();
 
         core.set("Events", events_table).unwrap();
     }
@@ -289,17 +310,17 @@ pub fn load_default_lua_data(lua: &mut Arc<Mutex<Lua>>) {
         let lua_player = lua_locked.create_table().unwrap();
 
         let player_get_x = lua_locked.create_function(|_, ()| {
-            Ok(player().position.0)
+            Ok(player().position.x)
         }).unwrap();
         lua_player.set("getX", player_get_x).unwrap();
 
         let player_get_y = lua_locked.create_function(|_, ()| {
-            Ok(player().position.1)
+            Ok(player().position.y)
         }).unwrap();
         lua_player.set("getY", player_get_y).unwrap();
 
         let player_set_pos = lua_locked.create_function(|_, (x, y): (usize, usize)| {
-            player().position = (x, y);
+            player().position = Point{x, y};
             Ok(())
         }).unwrap();
         lua_player.set("setPosition", player_set_pos).unwrap();
@@ -446,8 +467,8 @@ pub fn keycode_to_string(keycode: KeyCode) -> String{
     }
 }
 
-pub fn call_key_events(lua: &Lua, event: &KeyEvent) {
-    do_the_lua(lua, &["Events", "KeyEvents"], |innards| {
+pub fn call_key_events(lua: &Lua, event: &KeyEvent, path: &str) {
+    do_the_lua(lua, &["Events", path], |innards| {
         let key_events = innards[3].clone();
 
         let luafied_event = lua.create_table().unwrap();

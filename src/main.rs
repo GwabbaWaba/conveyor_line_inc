@@ -28,6 +28,9 @@ use ui_characters::*;
 mod debug;
 use debug::*;
 
+mod point;
+use point::*;
+
 mod display;
 
 mod item;
@@ -141,7 +144,7 @@ fn main() -> Result<(), io::Error> {
     })?;
 
     // engine config loading
-    let player_start_pos: (usize, usize);
+    let mut player_start_pos = None;
     unsafe {
         if let JsonValue::Object(config) = get_json_info("resources\\config\\config.json".to_owned()) {
             if let Some(JsonValue::Object(config)) = config.get("conveyor_line_engine_config") {
@@ -151,9 +154,13 @@ fn main() -> Result<(), io::Error> {
 
                     MAP_DISPLAY_HEIGHT = config.get("display_height").unwrap_or(&JsonValue::Number(0.into())).as_usize();
                     MAP_DISPLAY_WIDTH = config.get("display_width").unwrap_or(&JsonValue::Number(0.into())).as_usize();
-
-                    player_start_pos = (config.get("player_start_x").unwrap_or(&JsonValue::Number(0.into())).as_usize().unwrap(),
-                                        config.get("player_start_y").unwrap_or(&JsonValue::Number(0.into())).as_usize().unwrap());
+                }
+                
+                if let Some(JsonValue::Object(config)) = config.get("player") {
+                    player_start_pos = Some(Point {
+                        x: config.get("x").unwrap_or(&JsonValue::Number(0.into())).as_usize().unwrap(),
+                        y: config.get("y").unwrap_or(&JsonValue::Number(0.into())).as_usize().unwrap()
+                    });
                 }
             }
         }
@@ -216,7 +223,8 @@ fn main() -> Result<(), io::Error> {
     write_to_debug(format!("Map generated in: {:#?}", SystemTime::now().duration_since(time_before_map_gen).unwrap()));
     
     /* delete when you make world gen good ~*/
-    tile_map()[player().position.0][player().position.1] = Tile::new_unchecked({
+    player().position = player_start_pos.unwrap();
+    tile_map()[player().position.y][player().position.x] = Tile::new_unchecked({
         identifier_dump().tile_types.get_by_left("conveyor_line_core:air").cloned().unwrap_or(0)
     });
 
@@ -225,16 +233,17 @@ fn main() -> Result<(), io::Error> {
      * lol
     ~*/
     
-    let mut type_mode = false;
-
+    
     unsafe { TIME_BETWEEN_TICKS = Some(Duration::from_millis(50)) };
     unsafe { LAST_TICK = Some(SystemTime::now()) };
-
+    
     execute!(
         terminal().backend_mut(), 
         //EnterAlternateScreen, 
         Clear(ClearType::All)
     )?;
+    
+    let mut type_mode = false;
 
     let key_events_clone = Arc::clone(&key_events);
     let mouse_events_clone = Arc::clone(&mouse_events);
@@ -265,6 +274,8 @@ fn main() -> Result<(), io::Error> {
                     call_lua_events(&lua_clone.lock().unwrap(), "TickEvents", ());
                     unsafe { LAST_TICK = Some(SystemTime::now()) };
                 }
+                
+                unsafe { MAP_REDRAW_QUEUED = true; };
             }
             if unsafe { UI_REDRAW_QUEUED } {
                 draw_ui(&lua_clone.lock().unwrap());

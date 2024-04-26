@@ -7,8 +7,12 @@ local mapDim = {w = mapSize * 2 + 2, h = mapSize + 2}
 local mapTopLeft = {x = 80, y = 2}
 local mapBottomRight = {x = mapTopLeft.x + mapDim.w, y = mapTopLeft.y + mapDim.h - 1}
 
-local leftPanelDim = {w = mapDim.w / 2, h = mapDim.h}
+local leftPanelDim = {w = 30, h = mapDim.h}
 local leftPanelTopLeft = {x = mapTopLeft.x - leftPanelDim.w, y = mapTopLeft.y}
+local leftPanelBottomRight = {x = leftPanelTopLeft.x + leftPanelDim.w, y = leftPanelTopLeft.y + leftPanelDim.h - 1}
+
+local commandPromptDim = {w = leftPanelDim.w, h = 5}
+local commandPromptTopLeft = {x = leftPanelTopLeft.x, y = leftPanelBottomRight.y + 1}
 
 -- formatting values
 local horizChar = "═"
@@ -74,3 +78,24 @@ local leftPanel = {
 }
 local leftPanelIndex = #Core.ui.UiElements+1
 Core.ui.UiElements[leftPanelIndex] = leftPanel
+
+local commandPrompt = {
+    type = "block",
+    data = {
+        borders = {all = true},
+        borderType = "double",
+    },
+    rect = {
+        x = commandPromptTopLeft.x,
+        y = commandPromptTopLeft.y,
+        width = commandPromptDim.w,
+        height = commandPromptDim.h
+    }
+}
+local commandPromptIndex = #Core.ui.UiElements+1
+Core.ui.UiElements[commandPromptIndex] = commandPrompt
+
+return {
+    commandPromptDim = commandPromptDim,
+    commandPromptTopLeft = commandPromptTopLeft
+}

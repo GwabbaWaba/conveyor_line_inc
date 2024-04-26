@@ -9,8 +9,8 @@ local prevCommands = {}
 local prevCommandsNextIndex = 1
 
 -- quick event stuffs
-local quickEventChargePerTick = 0.2;
-local quickEventChargeRequired = 1;
+local maxQuickEventCharge = 1
+local quickEventChargePerTick = 0.1;
 local currentQuickEventCharge = 0;
 
 -- commands
@@ -268,7 +268,8 @@ local commandFunctions = {
     -- help
     ["help"] = {help},
     -- fundamentals
-    ["set"] = {set}, ["move"] = {move, bypassDelay = true}, ["walk"] = {walk}, ["break"] = {breakCommand}, ["place"] = {place},
+    ["move"] = {move, chargeNeeded = 0.05, chargeConsumed = 1}, ["walk"] = {walk, chargeNeeded = 0.4, chargeConsumed = 1},
+    ["set"] = {set}, ["break"] = {breakCommand}, ["place"] = {place},
     ["alias"] = {alias},
     -- debug
     ["print"] = {printCommand}, ["reload"] = {reload}, ["time-travel"] = {timeTravel}
@@ -340,39 +341,45 @@ end
 
 -- key command event listener
 local function quickCommand(keyEvent)
+    if keyEvent.kind ~= "press" then return end
+
     local keyCode = commsLib.keyCodeWithModifiers(keyEvent)
     
     local quickEvent = quickEvents[keyCode]
     if quickEvent then
+        
         for i, quickComm in ipairs(quickEvent.commands) do
             local command = commandFunctions[quickComm]
             
-            if command and (command["bypassDelay"] or currentQuickEventCharge >= quickEventChargeRequired) then
+            local chargeRequired = command["chargeNeeded"] or maxQuickEventCharge;
+            if command and currentQuickEventCharge >= chargeRequired then
+                local chargeConsumed = command["chargeConsumed"] or chargeRequired
+                currentQuickEventCharge = math.max(currentQuickEventCharge - chargeConsumed, 0)
+
                 local inputFromQuickEvent = {
                     command = quickComm,
                     arguments = quickEvent.arguments[i]
                 }
                 runCommand(command[1], inputFromQuickEvent)
-                currentQuickEventCharge = quickEventChargeRequired / 2
             end
         end
     end
 end
 
-local key_event_functions = {quickCommand}
+local keyEventFunctions = {quickCommand}
 
-for i = 1, #key_event_functions do
-    Core.Events.KeyEvents[#Core.Events.KeyEvents+1] = key_event_functions[i]
-end
 
 local commandEventFunctions = {commandEvent}
 
-for i = 1, #commandEventFunctions do
-    Core.Events.CommandEvents[#Core.Events.CommandEvents+1] = commandEventFunctions[i]
-end
 
 local function updateTickCounter()
-    currentQuickEventCharge = math.min(currentQuickEventCharge + quickEventChargePerTick, quickEventChargeRequired)
+    currentQuickEventCharge = math.min(currentQuickEventCharge + quickEventChargePerTick, maxQuickEventCharge)
 end
 
 Core.Events.TickEvents[#Core.Events.TickEvents+1] = updateTickCounter
+
+return {
+    commandEvent = commandEvent,
+    keyEventFunctions = keyEventFunctions,
+    commandEventFunctions = commandEventFunctions,
+}

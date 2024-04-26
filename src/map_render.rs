@@ -5,7 +5,7 @@ use crossterm::{cursor, execute, queue, terminal};
 use rand::{rngs::ThreadRng, thread_rng, Rng};
 use tui::{backend::CrosstermBackend, Terminal};
 
-use crate::{display::{color_format_char, ColorDisplay, HasBackColor, HasTextColor, HasTextDisplay, ANSI_DEFAULT_TEXT_COLOR}, ground_map, map_height, map_width, player::player, terminal, tile_map, write_to_debug, Writer, MAP_HEIGHT, MAP_WIDTH, STDOUT_REF};
+use crate::{display::{color_format_char, ColorDisplay, HasBackColor, HasTextColor, HasTextDisplay, ANSI_DEFAULT_TEXT_COLOR}, ground_map, map_height, map_width, player::player, terminal, tile_map, write_to_debug, Point, Writer, MAP_HEIGHT, MAP_WIDTH, STDOUT_REF};
 
 
 pub static mut MAP_DISPLAY_WIDTH: Option<usize> = None;
@@ -29,8 +29,8 @@ pub fn display_map() -> Result<(), io::Error> {
     let map_width = map_width() as isize;
     let map_height = map_height() as isize;
 
-    let horizontal_middle = player().position.0 as isize;
-    let vertical_middle = player().position.1 as isize;
+    let horizontal_middle = player().position.x as isize;
+    let vertical_middle = player().position.y as isize;
     let horizontal_dist = (map_display_width() / 2) as isize;
     let vertical_dist = (map_display_height() / 2) as isize;
 
@@ -70,7 +70,7 @@ pub fn display_map() -> Result<(), io::Error> {
                 // tile at current point
                 let tile = &tile_map()[y][x];
 
-                left = get_left_tile_display((x, y), tile, ground_colors);
+                left = get_left_tile_display(Point{x, y}, tile, ground_colors);
                 right = get_right_tile_display(tile, ground_colors);
                 
                 let _ = locked_stdout.write(format!("{}{}", left, right).as_bytes());
@@ -130,7 +130,7 @@ fn get_farlands_tile_display() -> String {
 }
 
 /// Used in display_map() to determine the left end of rendering
-fn get_left_tile_display<T: HasTextColor + HasBackColor + HasTextDisplay>(point: (usize, usize), tile: &T, ground_colors: ColorDisplay) -> String {
+fn get_left_tile_display<T: HasTextColor + HasBackColor + HasTextDisplay>(point: Point, tile: &T, ground_colors: ColorDisplay) -> String {
     let left: String;
     // display player layer if present
     if point == player().position {

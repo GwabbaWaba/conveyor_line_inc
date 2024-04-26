@@ -1,12 +1,1 @@
-{"conveyor_line_engine_config":{
-    "map": {
-        "width": 100,
-        "height": 100,
-        "display_width": 26,
-        "display_height": 26
-    }
-}
-,"conveyor_line_core_config":{"quick_events":{
-    "c+a":{"arguments":[["west"]],"commands":["move"]},"c+d":{"arguments":[["east"]],"commands":["move"]},"c+w":{"arguments":[["north"]],"commands":["move"]},"c+s":{"arguments":[["south"]],"commands":["move"]},"a":{"arguments":[["west"]],"commands":["walk"]},"d":{"arguments":[["east"]],"commands":["walk"]},"w":{"arguments":[["north"]],"commands":["walk"]},"s":{"arguments":[["south"]],"commands":["walk"]},
-    "c+h":{"arguments":[["west"]],"commands":["move"]},"c+l":{"arguments":[["east"]],"commands":["move"]},"c+k":{"arguments":[["north"]],"commands":["move"]},"c+j":{"arguments":[["south"]],"commands":["move"]},"h":{"arguments":[["west"]],"commands":["walk"]},"l":{"arguments":[["east"]],"commands":["walk"]},"k":{"arguments":[["north"]],"commands":["walk"]},"j":{"arguments":[["south"]],"commands":["walk"]}
-    },"direction_aliases":{"a":"west","h":"west","k":"north","j":"south","d":"east","l":"east","w":"north","s":"south"}}}
+{"conveyor_line_engine_config":{"map":{"display_width":26,"height":100,"display_height":26,"width":100},"player":{"y":50,"x":50}},"conveyor_line_core_config":{"quick_events":{"w":{"arguments":[["north"]],"commands":["walk"]},"c+l":{"arguments":[["east"]],"commands":["move"]},"s":{"arguments":[["south"]],"commands":["walk"]},"c+k":{"arguments":[["north"]],"commands":["move"]},"c+d":{"arguments":[["east"]],"commands":["move"]},"a":{"arguments":[["west"]],"commands":["walk"]},"h":{"arguments":[["west"]],"commands":["walk"]},"c+j":{"arguments":[["south"]],"commands":["move"]},"j":{"arguments":[["south"]],"commands":["walk"]},"d":{"arguments":[["east"]],"commands":["walk"]},"c+h":{"arguments":[["west"]],"commands":["move"]},"c+s":{"arguments":[["south"]],"commands":["move"]},"c+a":{"arguments":[["west"]],"commands":["move"]},"k":{"arguments":[["north"]],"commands":["walk"]},"l":{"arguments":[["east"]],"commands":["walk"]},"c+w":{"arguments":[["north"]],"commands":["move"]},"F12":{"arguments":[],"commands":["reload"]}},"direction_aliases":{"w":"north","h":"west","j":"south","s":"south","d":"east","a":"west","k":"north","l":"east"}}}
