@@ -8,6 +8,7 @@ use linked_hash_map::LinkedHashMap;
 use mlua::{Lua, Table};
 use tui::{backend::CrosstermBackend, style::{Modifier, Style}, widgets::{self, Block, Borders, ListState, Paragraph, StatefulWidget, TableState, Widget, Wrap}, Frame, Terminal};
 
+use keyboard_query::{DeviceQuery, DeviceState};
 use std::io::stdout;
 
 #[macro_use]
@@ -96,6 +97,9 @@ fn terminal() -> &'static mut once_cell::sync::Lazy::<Terminal<CrosstermBackend<
 
 fn main() -> Result<(), io::Error> {
     clear_debug();
+    let args = env::args().collect::<Vec<String>>();
+    
+    write_to_debug(format!("args: {:?}", args));
 
     unsafe {
         {
@@ -248,7 +252,7 @@ fn main() -> Result<(), io::Error> {
     let key_events_clone = Arc::clone(&key_events);
     let mouse_events_clone = Arc::clone(&mouse_events);
     let lua_clone = Arc::clone(&lua);
-    let process_thread_handle = thread::Builder::new().name(String::from("process")).spawn(move || {
+    let lua_thread_handle = thread::Builder::new().name(String::from("process")).spawn(move || {
         loop {
             do_key_events(&lua_clone.lock().unwrap(), &mut key_events_clone.lock().unwrap(), &mut type_mode);
             do_mouse_events(&lua_clone.lock().unwrap(), &mut mouse_events_clone.lock().unwrap());

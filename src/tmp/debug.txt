@@ -1,3 +1,4 @@
+args: ["target\\debug\\conveyor_line_inc.exe"]
 
 final dump:
 GameDataDump {
@@ -5,52 +6,52 @@ GameDataDump {
  tile_types: {
 5: TileType {
  identifier: 5, name: "", text_display: TextDisplay {
- character_left: Some('o'), character_right: Some('.') }
-, color_display: ColorDisplay {
- text_color_left: Some((150, 150, 175)), back_color_left: None, text_color_right: Some((150, 150, 175)), back_color_right: None }
-, solid: true, world_gen_weight: 0.125 }
-, 7: TileType {
- identifier: 7, name: "", text_display: TextDisplay {
- character_left: None, character_right: None }
-, color_display: ColorDisplay {
- text_color_left: None, back_color_left: None, text_color_right: None, back_color_right: None }
-, solid: false, world_gen_weight: 5.0 }
-, 6: TileType {
- identifier: 6, name: "", text_display: TextDisplay {
- character_left: Some('↑'), character_right: None }
-, color_display: ColorDisplay {
- text_color_left: Some((173, 83, 14)), back_color_left: None, text_color_right: None, back_color_right: None }
-, solid: true, world_gen_weight: 0.25 }
-, 4: TileType {
- identifier: 4, name: "", text_display: TextDisplay {
  character_left: Some('↑'), character_right: Some('↑') }
 , color_display: ColorDisplay {
  text_color_left: Some((83, 173, 14)), back_color_left: None, text_color_right: Some((83, 173, 14)), back_color_right: None }
 , solid: true, world_gen_weight: 0.25 }
-, 2: TileType {
- identifier: 2, name: "", text_display: TextDisplay {
- character_left: Some('.'), character_right: None }
-, color_display: ColorDisplay {
- text_color_left: Some((150, 150, 175)), back_color_left: None, text_color_right: None, back_color_right: None }
-, solid: false, world_gen_weight: 0.25 }
-, 3: TileType {
- identifier: 3, name: "", text_display: TextDisplay {
- character_left: Some('↑'), character_right: Some('↑') }
-, color_display: ColorDisplay {
- text_color_left: Some((173, 83, 14)), back_color_left: None, text_color_right: None, back_color_right: None }
-, solid: true, world_gen_weight: 0.125 }
-, 0: TileType {
- identifier: 0, name: "", text_display: TextDisplay {
+, 1: TileType {
+ identifier: 1, name: "", text_display: TextDisplay {
  character_left: Some('/'), character_right: None }
 , color_display: ColorDisplay {
  text_color_left: Some((94, 59, 19)), back_color_left: None, text_color_right: None, back_color_right: None }
 , solid: false, world_gen_weight: 0.125 }
-, 1: TileType {
- identifier: 1, name: "", text_display: TextDisplay {
+, 7: TileType {
+ identifier: 7, name: "", text_display: TextDisplay {
+ character_left: Some('↑'), character_right: None }
+, color_display: ColorDisplay {
+ text_color_left: Some((173, 83, 14)), back_color_left: None, text_color_right: None, back_color_right: None }
+, solid: true, world_gen_weight: 0.25 }
+, 6: TileType {
+ identifier: 6, name: "", text_display: TextDisplay {
+ character_left: Some('o'), character_right: Some('.') }
+, color_display: ColorDisplay {
+ text_color_left: Some((150, 150, 175)), back_color_left: None, text_color_right: Some((150, 150, 175)), back_color_right: None }
+, solid: true, world_gen_weight: 0.125 }
+, 2: TileType {
+ identifier: 2, name: "", text_display: TextDisplay {
  character_left: Some('↑'), character_right: None }
 , color_display: ColorDisplay {
  text_color_left: Some((83, 173, 14)), back_color_left: None, text_color_right: None, back_color_right: None }
 , solid: true, world_gen_weight: 0.5 }
+, 3: TileType {
+ identifier: 3, name: "", text_display: TextDisplay {
+ character_left: Some('.'), character_right: None }
+, color_display: ColorDisplay {
+ text_color_left: Some((150, 150, 175)), back_color_left: None, text_color_right: None, back_color_right: None }
+, solid: false, world_gen_weight: 0.25 }
+, 0: TileType {
+ identifier: 0, name: "", text_display: TextDisplay {
+ character_left: None, character_right: None }
+, color_display: ColorDisplay {
+ text_color_left: None, back_color_left: None, text_color_right: None, back_color_right: None }
+, solid: false, world_gen_weight: 5.0 }
+, 4: TileType {
+ identifier: 4, name: "", text_display: TextDisplay {
+ character_left: Some('↑'), character_right: Some('↑') }
+, color_display: ColorDisplay {
+ text_color_left: Some((173, 83, 14)), back_color_left: None, text_color_right: None, back_color_right: None }
+, solid: true, world_gen_weight: 0.125 }
 }
 , ground_types: {
 1: GroundType {
@@ -77,7 +78,7 @@ GameDataDump {
  }
 , identifiers: IdentifierMaps {
  tile_types: {
-"testing:orangey_tree" <> 6, "conveyor_line_inc:orangey_forest" <> 3, "conveyor_line_inc:forest" <> 4, "conveyor_line_inc:rock" <> 2, "conveyor_line_inc:big_rock" <> 5, "conveyor_line_core:air" <> 7, "conveyor_line_inc:twig" <> 0, "conveyor_line_inc:tree" <> 1}
+"conveyor_line_core:air" <> 0, "conveyor_line_inc:big_rock" <> 6, "testing:orangey_tree" <> 7, "conveyor_line_inc:rock" <> 3, "conveyor_line_inc:tree" <> 2, "conveyor_line_inc:orangey_forest" <> 4, "conveyor_line_inc:twig" <> 1, "conveyor_line_inc:forest" <> 5}
 , ground_types: {
 "conveyor_line_core:grass_alt" <> 0, "conveyor_line_core:grass" <> 1}
 , item_types: {
@@ -92,4 +93,4 @@ GameDataDump {
  }
 
 
-Map generated in: 11.8216ms
+Map generated in: 17.0307ms
