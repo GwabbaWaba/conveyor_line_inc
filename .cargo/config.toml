@@ -1,0 +1,2 @@
+[alias]
+xrun = "run --package xrun --"
