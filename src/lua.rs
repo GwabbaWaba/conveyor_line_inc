@@ -2,7 +2,7 @@ use std::{collections::HashMap, fs, io::{BufRead, BufReader}, path::Path};
 
 use globset::{Glob, GlobMatcher};
 use itertools::Itertools;
-use mlua::{Function, Lua, Table, Value, Variadic};
+use mlua::{Function, Lua, Table, Value, Variadic, LuaSerdeExt};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use regex::Regex;
 use serde::Deserialize;
@@ -111,6 +111,11 @@ pub fn setup_lua(lua: &Lua, terminal: &CrossTerminal) -> DynErrResult<()> {
     
     return Ok(());
 
+    fn world_interface(lua: &Lua, world: Table) -> DynErrResult<()> {
+        
+        Ok(()) 
+    }
+
     fn widget_interface(lua: &Lua, widget: Table) -> DynErrResult<()> {
         create_!(lua, function, widget, "new", |lua, (r#type, data): (String, Variadic<Value>)| {
             let widget_type = r#type.to_lowercase();
@@ -167,6 +172,13 @@ pub fn setup_lua(lua: &Lua, terminal: &CrossTerminal) -> DynErrResult<()> {
     fn utility_interface(lua: &Lua, utility: Table) -> DynErrResult<()> {
         create_!(lua, function, utility, "table_to_string", |_, table: Table| {
             Ok(format!("{:#?}", table))
+        });
+
+        create_!(lua, function, utility, "json_string_to_table", |lua, json: String| {
+            let json: serde_json::Value = serde_json::from_str(&json).unwrap();
+            let table: mlua::Value = lua.to_value(&json)?;
+
+            Ok(table)
         });
 
         Ok(())

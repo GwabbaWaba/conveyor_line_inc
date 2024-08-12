@@ -24,8 +24,18 @@ function clinc.load()
             {"/"},
             {"/"},
         }
-    })
+    })  
 end
+
+function clinc.world_gen()
+        
+
+
+end
+
+
+
+
 
 function clinc.update(dt)
     local key = clinc.input.key;

@@ -9,7 +9,7 @@ pub type CrossTerminal = Terminal<CrosstermBackend<Stdout>>;
 
 pub struct Game {
     lua: RwLock<Lua>,
-    terminal: Rc<RwLock<CrossTerminal>>
+    terminal: Rc<RwLock<CrossTerminal>>,
 }
 pub struct GameWrapper(Arc<Game>);
 
@@ -18,7 +18,7 @@ impl Game {
         Ok(GameWrapper(Arc::new(
             Self {
                 lua: RwLock::new(Lua::new()),
-                terminal: Rc::new(RwLock::new(Terminal::new(CrosstermBackend::new(stdout()))?))
+                terminal: Rc::new(RwLock::new(Terminal::new(CrosstermBackend::new(stdout()))?)),
             }
         ))) // <- lisp dev's stash
     }

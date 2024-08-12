@@ -21,6 +21,8 @@ impl TerminalSettings {
         #[cfg(debug_assertions)]
         execute!(
             stdout,
+            terminal::EnterAlternateScreen,
+            terminal::Clear(terminal::ClearType::All),
             terminal::DisableLineWrap,
             event::EnableMouseCapture,
             cursor::Hide,
@@ -42,6 +44,8 @@ impl Drop for TerminalSettings {
         #[cfg(debug_assertions)]
         let _ = execute!(
             io::stdout(),
+            terminal::LeaveAlternateScreen,
+            terminal::EnableLineWrap,
             terminal::EnableLineWrap,
             event::DisableMouseCapture,
             cursor::Show,

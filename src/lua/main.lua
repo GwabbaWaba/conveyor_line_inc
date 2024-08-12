@@ -1,7 +1,12 @@
+-- Entries defined in this table are subject to direct lookup by the rust engine
 core = {
+    -- the dump of all the draw calls within the current frame
     draw_buffer = {},
+    -- default values are main engine events
     event_registry = {
+        _load = {},
         load = {},
+        world_gen = {},
         draw = {},
         update = {},
     },
@@ -50,9 +55,16 @@ local function insert_if_not_present(data, table)
     table[#table+1] = data
 end
 
+
+-- Holds a standard interface for the core table which is also subject to rust meddling
 clinc = {
+    -- engine defined
     input = {},
     terminal = {},
+    sql_db = {},
+    widget = {},
+    utility = {},
+    world = {},
     
     register_item = function(name, data)
         core.items[name] = data
@@ -79,6 +91,7 @@ clinc = {
         end
     end,
 
+    -- TODO replace with sql storage
     register_tile = function(name, data)
         core.tiles[name] = data
         if data.tags == nil then return end
@@ -119,6 +132,10 @@ clinc = {
             core.recipes[data.type] = {}
         end
         core.recipes[data.type][name] = final_recipe
+    end,
+
+    get_tile_tag = function(name)
+        return tag_table[name] or {}
     end
 }
 
@@ -132,3 +149,74 @@ setmetatable(clinc, {
         end
     end
 })
+
+function clinc._load()
+    local sql_db = clinc.sql_db
+    sql_db:execute(
+        [[
+        CREATE TABLE tile_types (
+            id           INT    NOT NULL PRIMARY KEY,
+            name         STRING NOT NULL UNIQUE,
+            default_data JSON,
+            tags         JSON
+        );
+        
+        CREATE TABLE tile_tags (
+            id    INT    NOT NULL PRIMARY KEY,
+            name  STRING NOT NULL UNIQUE,
+            tiles JSON                         --list of all tile ids tagged with this tag
+        );
+        ]],
+        {}
+    )
+    local greatest_tile_id = 0
+    local greatest_tag_id = 0
+
+    clinc.register_tile = function(name, data, tags)
+         greatest_tile_id = greatest_tile_id + 1
+
+        sql_db:execute(
+            "INSERT INTO tile_types (id, name) VALUES (?1, ?2)",
+            {greatest_tile_id, name}
+        )
+
+        if data == nil then return end
+        sql_db:execute(
+            "UPDATE tile_types SET default_data = ?2 WHERE id = ?1",
+            {greatest_tile_id, data}
+        )
+
+        if tags == nil then return end
+        sql_db:execute(
+            "UPDATE tile_types SET tags = ?2 WHERE id = ?1",
+            {greatest_tile_id, tags}
+        )
+
+        for _, tag_name in ipairs(tags) do
+            if sql_db:query("SELECT * FROM tile_tags WHERE name = ?1", tage_name) == {} then
+                greatest_tag_id = greatest_tag_id + 1
+                sql_db:execute(
+                    "INSERT INTO tile_tags (id, name, tiles) VALUES (?1, ?2, ?3)",
+                    {greatest_tag_id, tag_name, {name}}
+                )
+            else
+            -- TODO this branch + testing
+            end
+
+        end
+        --TODO replicate behavior of code below with sql
+        --for every tag in tags, see if it exists, if it doesn't then register it, otherwise insert it into the tag
+        --[[
+        for _, tag in ipairs(data.tags) do
+            local tag_table = core.tile_tags[tag]
+            if tag_table then
+                insert_if_not_present(name, tag_table)
+            else
+                core.tile_tags[tag] = {name}
+            end
+        end
+        ]]
+
+    end
+
+end

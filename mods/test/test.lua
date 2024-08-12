@@ -53,6 +53,21 @@ function clinc.load()
             }
         })
     end
+
+    clinc.sql_db:execute(
+        [[CREATE TABLE test (
+            json    JSON
+        )]],
+        {}
+    )
+    clinc.sql_db:execute(
+        "INSERT INTO test (json) VALUES (?1)",
+        {{test = 7}}
+    )
+    clinc.sql_db:execute(
+        "INSERT INTO test (json) VALUES (?1)",
+        {{2, 3, 4, 1}}
+    )
 end
 
 local secondsBetween = 1
@@ -72,27 +87,64 @@ local function draw_layout()
     }
 end
 
-local messages = {("test "):rep(100), ("woah "):rep(100)}
-local last = #messages;
-local function draw_message(text, y)
+local function draw_message(text, y, height)
     clinc.terminal:draw(
         clinc.widget.new(
             "paragraph",
             text,
             {block = const_ui.block}
         ),
-        {x = 2, y = y, width = 100, height = 4}
+        {x = 2, y = y, width = 45, height = height or 4}
     )
 end
 
+local pressin_it = false
+local pressin_counter = 0
+local messages = {"test", "woah", " <3 ", "yeag", "what", "huh?", "text", "gecs"}
 function clinc.draw()
-    local text = messages[last]
-    last = last + 1;
-    if last > #messages then last = 1 end
-
     for y = 0, 25, 4 do
+        local text = messages[math.random(1, #messages+1)]
         draw_message(text, y)
+    end
+    local db_contents = clinc.sql_db:query(
+        "SELECT json FROM test WHERE json IS NOT NULL",
+        {}
+    )
+
+    local msg = clinc.utility.json_string_to_table(db_contents[1][1])
+    local msg2 = clinc.utility.json_string_to_table(db_contents[2][1])
+
+    draw_message(clinc.utility.table_to_string({msg, msg2}), 28, 20)
+
+    if pressin_it then
+        clinc.terminal:draw(
+            clinc.widget.new(
+                "paragraph",
+                "pressin it",
+                {block = const_ui.block}
+            ),
+            {x = 60, y = 4, width = 20, height = 4}
+        )
     end
     
     draw_layout()
+end
+
+function clinc.update(dt)
+    local key = clinc.input.key
+    local is_pressed = key:is_pressed("Space")
+    if is_pressed then
+        clinc.sql_db:execute(
+            "INSERT INTO test (num) VALUES (?1)",
+            {pressin_counter}
+        )
+        pressin_it = true
+        pressin_counter = 100
+    else
+        pressin_counter = math.max(-200, pressin_counter - 1)
+        if pressin_counter <= 0 then 
+            pressin_it = false
+        end
+    end
+
 end
