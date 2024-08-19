@@ -1,4 +1,3 @@
-workspace = { members = ["xrun"] }
 [package]
 name = "conveyor_line_inc"
 version = "0.0.8"
@@ -40,3 +39,4 @@ throbber-widgets-tui = "0.5.0"
 serde_derive = "1.0.203"
 postcard = { version = "1.0.8", features = ["alloc", "use-std", "postcard-derive"] }
 rusqlite = { version = "0.32.1", features = ["bundled", "serde_json"] }
+raylib = { version = "5.0.1", features = ["serde", "serde_json", "with_serde"] }

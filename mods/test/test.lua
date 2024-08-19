@@ -5,69 +5,7 @@ local function init_const_ui()
 end
 
 function clinc.load()
-    init_const_ui();
-
-    clinc.register_recipe_type("test:pressing", function(key, recipe)
-        local out = {}
-        for i, value in ipairs(recipe) do
-            out[i] = key[value] or value
-        end
-        return out
-    end)
-
-    local metals  = {"iron", "copper", "gold"}
-    local forms = {"ingot", "sheet", "rod"}
-
-    for _, metal in ipairs(metals) do
-        for _, form in ipairs(forms) do
-            local item_name = "test:" .. metal .. "_" .. form
-            clinc.register_item(item_name, {
-                sprite = "PLACEHOLDER"
-            })
-        end
-
-        local raw = "test:raw_" .. metal
-        clinc.register_item(raw, {
-            sprite = "PLACEHOLDER"
-        })
-        
-        local ingot = "test:" .. metal .. "_ingot"
-        local sheet = "test:" .. metal .. "_" .. "sheet"
-
-        clinc.register_recipe(ingot, {
-            type = "smelting",
-            output = ingot,
-            amount = 1,
-            recipe = {
-                ingredient = raw,
-                fuel = "default:standard_fuel",
-                time = 20
-            }
-        })
-        clinc.register_recipe(sheet, {
-            type = "test:pressing",
-            output = sheet,
-            amount = 1,
-            recipe = {
-                {ingot}
-            }
-        })
-    end
-
-    clinc.sql_db:execute(
-        [[CREATE TABLE test (
-            json    JSON
-        )]],
-        {}
-    )
-    clinc.sql_db:execute(
-        "INSERT INTO test (json) VALUES (?1)",
-        {{test = 7}}
-    )
-    clinc.sql_db:execute(
-        "INSERT INTO test (json) VALUES (?1)",
-        {{2, 3, 4, 1}}
-    )
+    init_const_ui()
 end
 
 local secondsBetween = 1
@@ -87,64 +25,160 @@ local function draw_layout()
     }
 end
 
-local function draw_message(text, y, height)
-    clinc.terminal:draw(
-        clinc.widget.new(
-            "paragraph",
-            text,
-            {block = const_ui.block}
-        ),
-        {x = 2, y = y, width = 45, height = height or 4}
-    )
+local item_types
+local item_tags
+local tile_types
+local tile_tags
+
+function update_local_registry()
+    item_types = clinc.sql_db:query(
+        "SELECT * FROM item_types",
+        {}
+    );
+    item_tags = clinc.sql_db:query(
+        "SELECT * FROM item_tags",
+        {}
+    );
+    tile_types = clinc.sql_db:query(
+        "SELECT * FROM tile_types",
+        {}
+    );
+    tile_tags = clinc.sql_db:query(
+        "SELECT * FROM tile_tags",
+        {}
+    );
 end
 
-local pressin_it = false
-local pressin_counter = 0
-local messages = {"test", "woah", " <3 ", "yeag", "what", "huh?", "text", "gecs"}
-function clinc.draw()
-    for y = 0, 25, 4 do
-        local text = messages[math.random(1, #messages+1)]
-        draw_message(text, y)
+function clinc.post_load()
+    update_local_registry()
+end
+
+local function get_tile_render(tile)
+    local sql_db = clinc.sql_db
+    local tiles = {
+        air = sql_db:query([[SELECT id FROM tile_types WHERE name = "default:air"]], {})[1][1],
+        grassy_dirt = sql_db:query([[SELECT id FROM tile_types WHERE name = "default:grassy_dirt"]], {})[1][1],
+        dirt = sql_db:query([[SELECT id FROM tile_types WHERE name = "default:dirt"]], {})[1][1]
+    }
+
+    if tile == tiles.grassy_dirt then
+        return "\x1b[38;2;0;255;0m,,\x1b[0m"
+    elseif tile == tiles.dirt then
+        return "\x1b[38;2;139;69;19m##\x1b[0m"
     end
-    local db_contents = clinc.sql_db:query(
-        "SELECT json FROM test WHERE json IS NOT NULL",
-        {}
-    )
+    return ""
+end
 
-    local msg = clinc.utility.json_string_to_table(db_contents[1][1])
-    local msg2 = clinc.utility.json_string_to_table(db_contents[2][1])
+local screens = {
+    none = function() end,
 
-    draw_message(clinc.utility.table_to_string({msg, msg2}), 28, 20)
-
-    if pressin_it then
+    registry = function()
+        local msg = "item_types:\n"..clinc.utility.table_to_string(item_types)
         clinc.terminal:draw(
             clinc.widget.new(
                 "paragraph",
-                "pressin it",
+                msg,
                 {block = const_ui.block}
             ),
-            {x = 60, y = 4, width = 20, height = 4}
+            {x = 0, y = 0, width = 50, height = clinc.terminal:window_size().height}
+        )
+
+        msg = "item_tags:\n"..clinc.utility.table_to_string(item_tags)
+        clinc.terminal:draw(
+            clinc.widget.new(
+                "paragraph",
+                msg,
+                {block = const_ui.block}
+            ),
+            {x = 50, y = 0, width = 50, height = clinc.terminal:window_size().height}
+        )
+
+        msg = "tile_types:\n"..clinc.utility.table_to_string(tile_types)
+        clinc.terminal:draw(
+            clinc.widget.new(
+                "paragraph",
+                msg,
+                {block = const_ui.block}
+            ),
+            {x = 100, y = 0, width = 50, height = clinc.terminal:window_size().height}
+        )
+
+        msg = "tile_tags:\n"..clinc.utility.table_to_string(tile_tags)
+        clinc.terminal:draw(
+            clinc.widget.new(
+                "paragraph",
+                msg,
+                {block = const_ui.block}
+            ),
+            {x = 150, y = 0, width = 50, height = clinc.terminal:window_size().height}
+        )
+    end,
+
+    world = function()
+        local sql_db = clinc.sql_db
+        local tiles = {
+            air = sql_db:query([[SELECT id FROM tile_types WHERE name = "default:air"]], {})[1][1],
+            grassy_dirt = sql_db:query([[SELECT id FROM tile_types WHERE name = "default:grassy_dirt"]], {})[1][1],
+            dirt = sql_db:query([[SELECT id FROM tile_types WHERE name = "default:dirt"]], {})[1][1]
+        }
+        local world = clinc.world
+        local test_chunk = world:get_chunk(0, 0, 0)
+
+        local render_buffer = ""
+        for x = 1, 32 do
+            local row = test_chunk[x]
+            for y = 1, 32 do
+                local column = row[y]
+                local top_tile = -1
+                
+                for z = 32, 1, -1 do
+                    local tile = column[z]
+                    if tile ~= tiles.air then
+                        top_tile = z
+                        break
+                    end
+                end
+
+                if top_tile ~= -1 then
+                    render_buffer = render_buffer..get_tile_render(column[top_tile])
+                else
+                    render_buffer = render_buffer.."  "
+                end
+            end
+            render_buffer = render_buffer.."\n"
+        end
+        
+        clinc.terminal:draw(
+            clinc.widget.new(
+                "paragraph",
+                render_buffer,
+                {block = const_ui.block}
+            ),
+            {x = 0, y = 0, width = 64, height = 32}
         )
     end
-    
-    draw_layout()
+}
+local screen = screens.none
+
+function clinc.draw()
+    screen()
 end
 
+local timer = 0
 function clinc.update(dt)
-    local key = clinc.input.key
-    local is_pressed = key:is_pressed("Space")
-    if is_pressed then
-        clinc.sql_db:execute(
-            "INSERT INTO test (num) VALUES (?1)",
-            {pressin_counter}
-        )
-        pressin_it = true
-        pressin_counter = 100
-    else
-        pressin_counter = math.max(-200, pressin_counter - 1)
-        if pressin_counter <= 0 then 
-            pressin_it = false
+    if screen == screens.registry then
+        timer = timer + dt
+        if timer >= 10 then
+            update_local_registry()
         end
     end
 
+    local key = clinc.input.key
+    if key:is_pressed("r") then
+        screen = screens.registry
+    elseif key:is_pressed("w") then
+        screen = screens.world
+    elseif key:is_pressed("Space") then
+        screen = screens.none
+    end
 end

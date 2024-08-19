@@ -1,3 +1,4 @@
+// RIP the ~ATH code that once lives here
 use std::io::{self, Stdout};
 
 use crossterm::{cursor, event, execute, terminal};
@@ -5,50 +6,26 @@ use ratatui::backend::CrosstermBackend;
 
 use crate::DynErrResult;
 
-pub struct TerminalSettings {}
-impl TerminalSettings {
-    pub fn setup_terminal(stdout: &mut CrosstermBackend<Stdout>) -> DynErrResult<Self> {
-        terminal::enable_raw_mode()?;
-        #[cfg(not(debug_assertions))]
-        execute!(
-            stdout,
-            terminal::EnterAlternateScreen,
-            terminal::Clear(terminal::ClearType::All),
-            terminal::DisableLineWrap,
-            event::EnableMouseCapture,
-            cursor::Hide,
-        )?;
-        #[cfg(debug_assertions)]
-        execute!(
-            stdout,
-            terminal::EnterAlternateScreen,
-            terminal::Clear(terminal::ClearType::All),
-            terminal::DisableLineWrap,
-            event::EnableMouseCapture,
-            cursor::Hide,
-        )?;
-        Ok(Self{})
-    }
+pub fn setup(stdout: &mut CrosstermBackend<Stdout>) -> DynErrResult<()> {
+    terminal::enable_raw_mode()?;
+    execute!(
+        stdout,
+        terminal::EnterAlternateScreen,
+        terminal::Clear(terminal::ClearType::All),
+        terminal::DisableLineWrap,
+        event::EnableMouseCapture,
+        cursor::Hide,
+    )?;
+    Ok(())
 }
-impl Drop for TerminalSettings {
-    fn drop(&mut self) {
-        let _ = terminal::disable_raw_mode();
-        #[cfg(not(debug_assertions))]
-        let _ = execute!(
-            io::stdout(),
-            terminal::LeaveAlternateScreen,
-            terminal::EnableLineWrap,
-            event::DisableMouseCapture,
-            cursor::Show,
-        );
-        #[cfg(debug_assertions)]
-        let _ = execute!(
-            io::stdout(),
-            terminal::LeaveAlternateScreen,
-            terminal::EnableLineWrap,
-            terminal::EnableLineWrap,
-            event::DisableMouseCapture,
-            cursor::Show,
-        );
-    }
+pub fn cleanup() -> DynErrResult<()> {
+    terminal::disable_raw_mode()?;
+    execute!(
+        io::stdout(),
+        cursor::Show,
+        event::DisableMouseCapture,
+        terminal::EnableLineWrap,
+        terminal::LeaveAlternateScreen,
+    )?;
+    Ok(())
 }

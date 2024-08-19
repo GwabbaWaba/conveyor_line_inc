@@ -5,7 +5,9 @@ core = {
     -- default values are main engine events
     event_registry = {
         _load = {},
+        pre_load = {},
         load = {},
+        post_load = {},
         world_gen = {},
         draw = {},
         update = {},
@@ -66,60 +68,12 @@ clinc = {
     utility = {},
     world = {},
     
-    register_item = function(name, data)
-        core.items[name] = data
-        if data.tags == nil then return end
-
-        for _, tag in ipairs(data.tags) do
-            local tag_table = core.item_tags[tag]
-            if tag_table then
-                insert_if_not_present(name, tag_table)
-            else
-                core.item_tags[tag] = {name}
-            end
-        end
-    end,
-
-    register_item_tag = function(name, data)
-        local tag_table = core.item_tags[name]
-        if tag_table then
-            for _, value in ipairs(data) do
-                tag_table[#tag_table+1] = value
-            end
-        else
-            core.item_tags[name] = data
-        end
-    end,
-
-    -- TODO replace with sql storage
-    register_tile = function(name, data)
-        core.tiles[name] = data
-        if data.tags == nil then return end
-
-        for _, tag in ipairs(data.tags) do
-            local tag_table = core.tile_tags[tag]
-            if tag_table then
-                insert_if_not_present(name, tag_table)
-            else
-                core.tile_tags[tag] = {name}
-            end
-        end
-    end,
-
-    register_tile_tag = function(name, data)
-        local tag_table = core.tile_tags[name]
-        if tag_table then
-            for _, value in ipairs(data) do
-                tag_table[#tag_table+1] = value
-            end
-        else
-            core.tile_tags[name] = data
-        end
-    end,
-
-    register_recipe_type = function (name, handler)
-        core.recipe_types[name] = handler
-    end,
+    -- defined in _load, the proper definitions require functions defined by the engine after initial init, these are mainly here for lsp recognition
+    -- I would make these call _G["panic!"], but that too is loaded after initial init
+    register_item     = function(name, data, tags)   end,
+    register_item_tag = function(name, tagged_items) end,
+    register_tile     = function(name, data, tags)   end,
+    register_tile_tag = function(name, tagged_tiles) end,
 
     register_recipe = function(name, data)
         local final_recipe = {
@@ -133,10 +87,9 @@ clinc = {
         end
         core.recipes[data.type][name] = final_recipe
     end,
-
-    get_tile_tag = function(name)
-        return tag_table[name] or {}
-    end
+    register_recipe_type = function (name, handler)
+        core.recipe_types[name] = handler
+    end,
 }
 
 setmetatable(clinc, {
@@ -154,23 +107,123 @@ function clinc._load()
     local sql_db = clinc.sql_db
     sql_db:execute(
         [[
-        CREATE TABLE tile_types (
-            id           INT    NOT NULL PRIMARY KEY,
-            name         STRING NOT NULL UNIQUE,
-            default_data JSON,
-            tags         JSON
-        );
-        
-        CREATE TABLE tile_tags (
-            id    INT    NOT NULL PRIMARY KEY,
-            name  STRING NOT NULL UNIQUE,
-            tiles JSON                         --list of all tile ids tagged with this tag
-        );
+        CREATE TABLE assets (
+            name STRING NOT NULL PRIMARY KEY,
+            data STRING NOT NULL
+        )
         ]],
         {}
     )
+
+    sql_db:execute(
+        [[
+        CREATE TABLE item_types (
+            id           SMALLINT UNSIGNED NOT NULL PRIMARY KEY,
+            name         STRING            NOT NULL UNIQUE,
+            default_data JSON,
+            tags         JSON
+        )
+        ]],
+        {}
+    )
+    sql_db:execute(
+        [[
+        CREATE TABLE item_tags (
+            id    SMALLINT UNSIGNED NOT NULL PRIMARY KEY,
+            name  STRING            NOT NULL UNIQUE,
+            items JSON              NOT NULL
+        )
+        ]],
+        {}
+    )
+    sql_db:execute(
+        [[
+        CREATE TABLE tile_types (
+            id           SMALLINT UNSIGNED NOT NULL PRIMARY KEY,
+            name         STRING            NOT NULL UNIQUE,
+            default_data JSON,
+            tags         JSON
+        )
+        ]],
+        {}
+    )
+    sql_db:execute(
+        [[
+        CREATE TABLE tile_tags (
+            id    SMALLINT UNSIGNED NOT NULL PRIMARY KEY,
+            name  STRING            NOT NULL UNIQUE,
+            tiles JSON              NOT NULL
+        )
+        ]],
+        {}
+    )
+
+    -- item registry
+    local greatest_item_tag_id = 0
+    local greatest_item_id = 0
+
+    clinc.register_item_tag = function(name, tagged_items)
+        greatest_item_tag_id = greatest_item_tag_id + 1
+
+        sql_db:execute(
+            "INSERT INTO item_tags (id, name, items) VALUES (?1, ?2, ?3)",
+            {greatest_item_tag_id, name, tagged_items}
+        )
+
+    end
+
+    clinc.register_item = function(name, data, tags)
+         greatest_item_id = greatest_item_id + 1
+
+        sql_db:execute(
+            "INSERT INTO item_types (id, name) VALUES (?1, ?2)",
+            {greatest_item_id, name}
+        )
+
+        if data == nil then return end
+        sql_db:execute(
+            "UPDATE item_types SET default_data = ?2 WHERE id = ?1",
+            {greatest_item_id, data}
+        )
+
+        if tags == nil then return end
+        sql_db:execute(
+            "UPDATE item_types SET tags = ?2 WHERE id = ?1",
+            {greatest_item_id, tags}
+        )
+
+        for _, tag_name in ipairs(tags) do
+            if next(sql_db:query("SELECT * FROM item_tags WHERE name = ?1", {tag_name})) == nil then
+                clinc.register_item_tag(tag_name, {name})
+            else
+                local tag_table = sql_db:query(
+                    "SELECT id, name, items FROM item_tags WHERE name = ?1",
+                    {tag_name}
+                )
+                insert_if_not_present(greatest_item_id, tag_table)
+                sql_db:execute(
+                    "UPDATE item_tags SET items = ?2 WHERE name = ?1",
+                    {tag_name, tag_table}
+                )
+            end
+
+        end
+
+    end
+
+    -- tile registry
+    local greatest_tile_tag_id = 0
     local greatest_tile_id = 0
-    local greatest_tag_id = 0
+
+    clinc.register_tile_tag = function(name, tagged_tiles)
+        greatest_tile_tag_id = greatest_tile_tag_id + 1
+
+        sql_db:execute(
+            "INSERT INTO tile_tags (id, name, tiles) VALUES (?1, ?2, ?3)",
+            {greatest_tile_tag_id, name, tagged_tiles}
+        )
+
+    end
 
     clinc.register_tile = function(name, data, tags)
          greatest_tile_id = greatest_tile_id + 1
@@ -193,30 +246,50 @@ function clinc._load()
         )
 
         for _, tag_name in ipairs(tags) do
-            if sql_db:query("SELECT * FROM tile_tags WHERE name = ?1", tage_name) == {} then
-                greatest_tag_id = greatest_tag_id + 1
-                sql_db:execute(
-                    "INSERT INTO tile_tags (id, name, tiles) VALUES (?1, ?2, ?3)",
-                    {greatest_tag_id, tag_name, {name}}
-                )
+            if next(sql_db:query("SELECT * FROM tile_tags WHERE name = ?1", {tag_name})) == nil then
+                clinc.register_tile_tag(tag_name, {name})
             else
-            -- TODO this branch + testing
+                local tag_table = sql_db:query(
+                    "SELECT id, name, tiles FROM tile_tags WHERE name = ?1",
+                    {tag_name}
+                )
+                insert_if_not_present(greatest_tile_id, tag_table)
+                sql_db:execute(
+                    "UPDATE tile_tags SET tiles = ?2 WHERE name = ?1",
+                    {tag_name, tag_table}
+                )
             end
 
         end
-        --TODO replicate behavior of code below with sql
-        --for every tag in tags, see if it exists, if it doesn't then register it, otherwise insert it into the tag
-        --[[
-        for _, tag in ipairs(data.tags) do
-            local tag_table = core.tile_tags[tag]
-            if tag_table then
-                insert_if_not_present(name, tag_table)
-            else
-                core.tile_tags[tag] = {name}
-            end
-        end
-        ]]
 
     end
+
+    -- world data
+    -- any tiles that can have their processing skipped when outside of load distance
+    sql_db:execute(
+        [[
+        CREATE TABLE tile_data (
+            tile_id SMALLINT UNSIGNED NOT NULL,
+            x       INT               NOT NULL,
+            y       SMALLINT          NOT NULL,
+            z       INT               NOT NULL,
+            data    JSON              NOT NULL
+        )
+        ]],
+        {}
+    )
+    -- any tiles that must ALWAYS be loaded (should be nearly every machine as to keep global factories running smooth)
+    sql_db:execute(
+        [[
+        CREATE TABLE critical_tile_data (
+            tile_id SMALLINT UNSIGNED NOT NULL,
+            x       INT               NOT NULL,
+            y       SMALL             NOT NULL,
+            z       INT               NOT NULL,
+            data    JSON              NOT NULL
+        )
+        ]],
+        {}
+    )
 
 end

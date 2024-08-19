@@ -3,12 +3,13 @@ use std::{collections::HashMap, fs, io::{BufRead, BufReader}, path::Path};
 use globset::{Glob, GlobMatcher};
 use itertools::Itertools;
 use mlua::{Function, Lua, Table, Value, Variadic, LuaSerdeExt};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::{layout::Alignment, widgets::{Block, Borders, Paragraph}};
+use ansi_to_tui::IntoText;
 use regex::Regex;
 use serde::Deserialize;
 use walkdir::{DirEntry, WalkDir};
 
-use crate::{BlockWrapper, CrossTerminal, DynErrResult, GameWrapper, ParagraphWrapper};
+use crate::{terminal_settings, BlockWrapper, CrossTerminal, DynErrResult, GameWrapper, ParagraphWrapper};
 
 use paste::paste;
 
@@ -133,7 +134,7 @@ pub fn setup_lua(lua: &Lua, terminal: &CrossTerminal) -> DynErrResult<()> {
                     lua.create_userdata(BlockWrapper(block))?
                 },
                 "paragraph" => {
-                    let mut paragraph = Paragraph::new(data[0].as_str().unwrap_or("").to_owned());
+                    let mut paragraph = Paragraph::new(data[0].as_str().unwrap_or("").to_owned().into_text().unwrap());
                     let data = data[1].as_table().cloned().unwrap();
                     for data in data.pairs::<String, Value>() {
                         let (key, val) = data?;
@@ -142,6 +143,7 @@ pub fn setup_lua(lua: &Lua, terminal: &CrossTerminal) -> DynErrResult<()> {
                                 let block = (&val.as_userdata().unwrap().borrow::<BlockWrapper>()?.0).to_owned();
                                 paragraph.block(block)
                             },
+                            "alignment" => paragraph.alignment(alignment_from_str(&val.to_string()?)),
                             _ => {continue;}
                         }
                     }
@@ -156,6 +158,7 @@ pub fn setup_lua(lua: &Lua, terminal: &CrossTerminal) -> DynErrResult<()> {
     
     fn global_lib(lua: &Lua, globals: Table) -> DynErrResult<()> {
         create_!(lua, function, globals, "exit", |_, code: i32| -> mlua::Result<()> /* mlua::Result<!> */ {
+            terminal_settings::cleanup().expect("funny");
             std::process::exit(code)
         });
         create_!(lua, function, globals, "panic!", |_, message: Variadic<String>| -> mlua::Result<()> /* mlua::Result<!> */ {
@@ -196,6 +199,15 @@ fn border_from_str(s: &str) -> Borders {
     }
 }
 
+fn alignment_from_str(s: &str) -> Alignment {
+    match s.to_lowercase().as_str() {
+        "left" => Alignment::Left,
+        "center" => Alignment::Center,
+        "right" => Alignment::Right,
+        _ => Alignment::Left
+    }
+}
+
 pub fn call_lua_events_from_game(game: &GameWrapper, event_name: &'static str, args: Variadic<Value>) -> DynErrResult<()> {
     let lua = game.lua();
     let hidden_registry = traverse_lua_tables(lua.globals(), REGISTRY_PATH)?;
@@ -226,8 +238,8 @@ pub struct ModScript {
     file: DirEntry
 }
 pub fn register_scripts<P: AsRef<Path>>(path: P) -> DynErrResult<Vec<ModScript>> {
-    let lua_glob = Glob::new("*.lua")?.compile_matcher();
-    let disabled_glob = Glob::new("--*disable?")?.compile_matcher();
+    let lua_glob = Glob::new(r"*.lua")?.compile_matcher();
+    let disabled_glob = Glob::new(r"--*disable?")?.compile_matcher();
     let priority_reg = Regex::new(r"-- *priority: *(?<priority>[0-9]+)")?;
 
     let files = files_from_glob(&lua_glob, path);

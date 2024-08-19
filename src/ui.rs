@@ -169,7 +169,10 @@ fn build_rs_draw_buffer<'lua>(lua: &'lua Lua, render_item: Value<'lua>, size: &R
             }
         },
         Value::UserData(widget) => {
-            holder.push(DrawBuffer { widget: Cell::new(Value::UserData(widget.to_owned())), size: size.to_owned() });
+            holder.push(DrawBuffer{
+                widget: Cell::new(Value::UserData(widget.to_owned())),
+                size: size.to_owned()
+            });
         },
         _ => unreachable!()
     }

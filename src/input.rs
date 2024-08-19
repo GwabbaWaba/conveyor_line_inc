@@ -47,8 +47,10 @@ impl UserData for EventWrapper {
 
 impl UserData for KeyEventWrapper {
     fn add_methods<'lua, M: UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("is_pressed", |_, this, key: String| {
-            let key = key.to_case(convert_case::Case::Pascal);
+        methods.add_method("is_pressed", |_, this, mut key: String| {
+            if key.len() > 1 {
+                key = key.to_case(convert_case::Case::Pascal);
+            }
             Ok(this.0.iter().any(|ke| {
                 key == match ke.code {
                     KeyCode::Char(' ') => "Space".to_owned(),
